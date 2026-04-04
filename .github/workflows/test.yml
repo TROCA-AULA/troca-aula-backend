@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      # Mesmo com Mocks, o Prisma precisa gerar os tipos baseados no seu schema.prisma
+      # Usamos --skip-generate para não validar a URL do banco se não for necessário
+      run: pnpm prisma generate
+
+    - name: Run Build
+      run: pnpm run build --if-present
+
+    - name: Run Tests
+      # Aqui rodamos os testes sem precisar da DATABASE_URL real
+      run: pnpm test
