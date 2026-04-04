@@ -14,22 +14,18 @@ export class AuthService {
 
   async signIn(username: string, pass: string): Promise<any> {
     const user = await this.usersService.findOneBy(username);
-    try {
-      if (!user) throw new UnauthorizedException();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
-      await bcrypt.compare(pass, user.password);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, ...userData } = user;
+    if (!user) throw new UnauthorizedException();
 
-      const payload = { sub: userData };
-      return {
-        access_token: await this.jwtService.signAsync(payload, {
-          secret: this.config.get('secret'),
-        }),
-      };
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (_e) {
-      throw new UnauthorizedException();
-    }
+    const isMatch = await bcrypt.compare(pass, user.password);
+    if (!isMatch) throw new UnauthorizedException();
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...userData } = user;
+    const payload = { sub: userData };
+    return {
+      access_token: await this.jwtService.signAsync(payload, {
+        secret: this.config.get('secret'),
+      }),
+    };
   }
 }

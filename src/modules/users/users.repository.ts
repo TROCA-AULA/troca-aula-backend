@@ -64,7 +64,7 @@ export class UsersRepository {
   }
 
   update(id: number, updateProfileDto: UpdateUserDto) {
-    return this.prisma.subjects.update({
+    return this.prisma.users.update({
       data: {
         ...updateProfileDto,
       } as Prisma.UsersUpdateInput,
