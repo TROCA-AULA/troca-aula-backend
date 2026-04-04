@@ -1,1 +1,4 @@
-export class Subject {}
+export class Subject {
+  id: number;
+  name: string;
+}

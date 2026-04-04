@@ -1,1 +1,4 @@
-export class School {}
+export class School {
+  id: number;
+  name: string;
+}
