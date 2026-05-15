@@ -40,6 +40,21 @@ Backend do sistema **Troca Aula** - plataforma para gerenciamento e facilitaçã
 - PostgreSQL
 - Docker
 
+## Documentação
+
+Consulte a documentação completa na pasta `docs/`:
+
+| Arquivo | Descrição |
+|---------|-----------|
+| [docs/01-visao-geral.md](docs/01-visao-geral.md) | Visão geral, propósito e objetivos do projeto |
+| [docs/02-arquitetura-backend.md](docs/02-arquitetura-backend.md) | Arquitetura do backend, padrões e estruturas |
+| [docs/03-endpoints.md](docs/03-endpoints.md) | Detalhamento completo de todos os endpoints |
+| [docs/04-regras-negocio.md](docs/04-regras-negocio.md) | Regras de negócio e validações do sistema |
+| [docs/05-user-stories.md](docs/05-user-stories.md) | User stories com cenários de aceitação |
+| [docs/06-modelo-dados.md](docs/06-modelo-dados.md) | Modelo de dados e schema do banco |
+| [docs/07-fluxos-negocio.md](docs/07-fluxos-negocio.md) | Fluxos de negócio com diagramas Mermaid |
+| [docs/08-fluxo-banco.md](docs/08-fluxo-banco.md) | Fluxo de dados no banco de dados |
+
 ## Project setup
 
 ```bash
