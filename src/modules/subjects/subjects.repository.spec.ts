@@ -49,7 +49,9 @@ describe('SubjectRepository', () => {
 
   describe('findAll', () => {
     it('should find all subjects', async () => {
-      mockPrismaService.subjects.findMany.mockResolvedValue([{ id: 1, name: 'Math' }]);
+      mockPrismaService.subjects.findMany.mockResolvedValue([
+        { id: 1, name: 'Math' },
+      ]);
       const result = await repository.findAll();
       expect(prismaService.subjects.findMany).toHaveBeenCalled();
       expect(result).toEqual([{ id: 1, name: 'Math' }]);
@@ -58,9 +60,14 @@ describe('SubjectRepository', () => {
 
   describe('findOne', () => {
     it('should find one subject', async () => {
-      mockPrismaService.subjects.findUnique.mockResolvedValue({ id: 1, name: 'Math' });
+      mockPrismaService.subjects.findUnique.mockResolvedValue({
+        id: 1,
+        name: 'Math',
+      });
       const result = await repository.findOne(1);
-      expect(prismaService.subjects.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.subjects.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1, name: 'Math' });
     });
   });
@@ -80,9 +87,14 @@ describe('SubjectRepository', () => {
 
   describe('remove', () => {
     it('should remove a subject', async () => {
-      mockPrismaService.subjects.delete.mockResolvedValue({ id: 1, name: 'Math' });
+      mockPrismaService.subjects.delete.mockResolvedValue({
+        id: 1,
+        name: 'Math',
+      });
       const result = await repository.remove(1);
-      expect(prismaService.subjects.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.subjects.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1, name: 'Math' });
     });
   });

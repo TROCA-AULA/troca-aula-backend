@@ -44,7 +44,7 @@ export class ClassesRepository {
     if (params?.schoolId) {
       where = {
         ...where,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
         schoolId: params.schoolId,
       };
     }

@@ -58,7 +58,9 @@ describe('AuthGuard', () => {
       const result = await guard.canActivate(context);
 
       expect(result).toBe(true);
-      expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid_token', { secret: 'secret' });
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid_token', {
+        secret: 'secret',
+      });
     });
 
     it('should throw UnauthorizedException if no token is provided', async () => {
@@ -70,22 +72,26 @@ describe('AuthGuard', () => {
         }),
       } as unknown as ExecutionContext;
 
-      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should throw UnauthorizedException if token type is not Bearer', async () => {
-        const context = {
-          switchToHttp: () => ({
-            getRequest: () => ({
-              headers: {
-                authorization: 'Basic some_token',
-              },
-            }),
+      const context = {
+        switchToHttp: () => ({
+          getRequest: () => ({
+            headers: {
+              authorization: 'Basic some_token',
+            },
           }),
-        } as unknown as ExecutionContext;
-  
-        await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
-      });
+        }),
+      } as unknown as ExecutionContext;
+
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
 
     it('should throw UnauthorizedException if token is invalid', async () => {
       const context = {
@@ -100,7 +106,9 @@ describe('AuthGuard', () => {
 
       mockJwtService.verifyAsync.mockRejectedValue(new Error('Invalid token'));
 
-      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });

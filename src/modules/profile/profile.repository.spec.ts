@@ -58,7 +58,9 @@ describe('ProfileRepository', () => {
     it('should find one profile', async () => {
       mockPrismaService.profiles.findUnique.mockResolvedValue({ id: 1 });
       const result = await repository.findOne(1);
-      expect(prismaService.profiles.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.profiles.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1 });
     });
   });
@@ -77,7 +79,9 @@ describe('ProfileRepository', () => {
     it('should remove a profile', async () => {
       mockPrismaService.profiles.delete.mockResolvedValue({ id: 1 });
       const result = await repository.remove(1);
-      expect(prismaService.profiles.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.profiles.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1 });
     });
   });
