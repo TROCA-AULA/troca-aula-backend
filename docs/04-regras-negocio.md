@@ -6,6 +6,59 @@ Este documento descreve todas as regras de negocio do sistema Troca Aula, defini
 
 ---
 
+## Diagrama de Decisão de Acesso
+
+```mermaid
+flowchart TD
+    subgraph "Validacao de Acesso ao Sistema"
+        INICIO[Acessa o sistema] --> LOGIN{Tem conta<br/>Gov.br?}
+        LOGIN -->|Nao| CRIAR[Redirect para<br/>Gov.br]
+        LOGIN -->|Sim| VALIDAR{Token<br/>valido?}
+        VALIDAR -->|Nao| REFRESH[Renovar token]
+        VALIDAR -->|Sim| PERFIL{Checar perfil<br/>do usuario}
+    end
+    
+    subgraph "Definicao de Acoes por Perfil"
+        PERFIL -->|DIRETOR| Acoes_D[Todas as acoes]
+        PERFIL -->|AUXILIAR_ADMIN| Acoes_AA[Cria/Edita/Aprova]
+        PERFIL -->|PROFESSOR| Acoes_P[Busca/Candida/Historico]
+    end
+    
+    style LOGIN fill:#2196F3,color:#fff
+    style VALIDAR fill:#4CAF50,color:#fff
+    style PERFIL fill:#FF9800,color:#fff
+    style Acoes_D fill:#9C27B0,color:#fff
+    style Acoes_AA fill:#673AB7,color:#fff
+    style Acoes_P fill:#3F51B5,color:#fff
+```
+
+### Fluxo de Validação de Candidatura
+
+```mermaid
+flowchart TB
+    START[Candidatura recebida] --> V1{Professor<br/>habilitado?}
+    V1 -->|Nao| E1[Bloqueia + Motivo]
+    V1 -->|Sim| V2{Horario<br/>livre?}
+    V2 -->|Nao| E2[Bloqueia + Conflito]
+    V2 -->|Sim| V3{Limite<br/>atingido?}
+    V3 -->|Sim| E3[Bloqueia + Limite OK]
+    V3 -->|Nao| V4{Aula<br/>disponivel?}
+    V4 -->|Nao| E4[Bloqueia + Ocupada]
+    V4 -->|Sim| SUCESSO[Cria registro<br/>PENDING]
+    
+    style V1 fill:#FF9800
+    style V2 fill:#FF9800
+    style V3 fill:#FF9800
+    style V4 fill:#FF9800
+    style SUCESSO fill:#4CAF50,color:#fff
+    style E1 fill:#f44336,color:#fff
+    style E2 fill:#f44336,color:#fff
+    style E3 fill:#f44336,color:#fff
+    style E4 fill:#f44336,color:#fff
+```
+
+---
+
 ## Diagrama de Classes — Modelo de Domínio
 
 ```mermaid

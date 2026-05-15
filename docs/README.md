@@ -32,6 +32,18 @@ A documentação está organizada em seções que abordam diferentes aspectos do
 
 **08-fluxo-banco.md** — Explica detalhadamente como os dados são manipulados no banco de dados, incluindo transações, queries principais e operações de persistência.
 
+### Seção 4: Setup e Configuração
+
+**09-setup-config.md** — Guia completo para configuração do ambiente de desenvolvimento, instalação de dependências, execução de testes, pipeline CI/CD, Docker e containerização, e troubleshooting. Este documento é essencial para novos desenvolvedores que precisam configurar o projeto em sua máquina local.
+
+### Seção 5: Integração Frontend
+
+**10-contratos-api.md** — Contratos completos da API para integração com o frontend. Contém exemplos de curl, payloads de request, responses esperadas, códigos de erro e tabela resumida de todos os endpoints. Este documento é essencial para os desenvolvedores do frontend conseguirem integrar corretamente com o backend.
+
+### Análise e Pendências
+
+**11-pendencias.md** — Documento de pendências de desenvolvimento, identificado durante análise do código. Lista funcionalidades que ainda não foram implementadas, como controle de limite de substituições e integração com Conta Gov.br. Inclui recomendações de implementação e status geral do projeto.
+
 ---
 
 ## Como Utilizar Esta Documentação

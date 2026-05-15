@@ -33,6 +33,80 @@ graph TB
     C --> A
 ```
 
+### Arquitetura Detalhada de Deployment
+
+```mermaid
+graph TB
+    subgraph "Ambiente de Desenvolvimento"
+        DEV_PC[Desktop<br/>Desenvolvedor]
+        DEV_DB[(Docker<br/>PostgreSQL)]
+        DEV_NPM[pnpm<br/>dev server]
+    end
+    
+    subgraph "Ambiente de Build & Test"
+        GITHUB[GitHub<br/>Actions]
+        TEST[Jest<br/>Tests]
+        LINT[ESLint<br/>Lint]
+    end
+    
+    subgraph "Ambiente de Producao (Nuvem)"
+        NGINX[NGINX<br/>Reverse Proxy]
+        APP[Container<br/>NestJS]
+        CLOUD_DB[(Cloud<br/>PostgreSQL)]
+        GOVBR[Conta<br/>Gov.br]
+    end
+    
+    DEV_PC --> DEV_NPM
+    DEV_NPM --> DEV_DB
+    
+    DEV_PC -->|"git push"| GITHUB
+    GITHUB --> TEST
+    GITHUB --> LINT
+    GITHUB -->|"deploy"| NGINX
+    
+    NGINX --> APP
+    APP --> CLOUD_DB
+    APP -.->|"OAuth2"| GOVBR
+    
+    style GITHUB fill:#333,color:#fff
+    style NGINX fill:#009639,color:#fff
+    style APP fill:#0078D4,color:#fff
+```
+
+### Fluxo de Request/Response Completo
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant FE as Frontend
+    participant API as NestJS API
+    participant G as Guards
+    participant S as Service
+    participant R as Repository
+    participant P as Prisma
+    participant DB as PostgreSQL
+    
+    U->>FE: Realiza ação
+    FE->>API: POST /endpoint (token)
+    
+    API->>G: Valida token JWT
+    G->>API: Token válido
+    
+    API->>S: Chama método do Service
+    S->>R: Chama método do Repository
+    
+    R->>P: prisma.entity.findFirst()
+    P->>DB: SELECT * FROM...
+    DB->>P: Resultado
+    P->>R: Entity
+    R->>S: Resultado processado
+    S->>API: DTO response
+    API->>FE: JSON response
+    FE->>U: Atualiza interface
+```
+
+---
+
 ## Estrutura de Modulos
 
 ```text

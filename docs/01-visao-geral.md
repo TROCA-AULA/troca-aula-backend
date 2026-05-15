@@ -104,7 +104,63 @@ C4Container
     Rel(nestjs, govbr, "Valida Identity", "OAuth2")
 ```
 
-### Mind Map — Funcionalidades do Sistema
+### Pipeline CI/CD — GitHub Actions
+
+```mermaid
+flowchart LR
+    subgraph Build
+        P1[Push Code] --> P2[Checkout]
+        P2 --> P3[Install Deps]
+        P3 --> P4[Build]
+        P4 --> P5[Lint]
+        P5 --> P6[Test]
+    end
+    
+    subgraph Deploy
+        P6 --> D1[Deploy to Cloud]
+        D1 --> D2[Health Check]
+        D2 --> D3[Notify]
+    end
+    
+    style P1 fill:#0078D4,color:#fff
+    style P6 fill:#4CAF50,color:#fff
+    style D1 fill:#FF9800,color:#fff
+    style D3 fill:#9C27B0,color:#fff
+```
+
+### Fluxo de Dados no Sistema
+
+```mermaid
+graph LR
+    subgraph "Dados de Entrada"
+        E1[Dados do Usuario]
+        E2[Dados da Escola]
+        E3[Dados da Aula]
+    end
+    
+    subgraph "Processamento"
+        P1[Validacao]
+        P2[Transformacao]
+        P3[Persistencia]
+    end
+    
+    subgraph "Dados de Saida"
+        S1[Response JSON]
+        S2[Tokens JWT]
+        S3[Notificacoes]
+    end
+    
+    E1 --> P1
+    E2 --> P1
+    E3 --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> S1
+    P3 --> S2
+    P3 --> S3
+```
+
+### mind Map — Funcionalidades do Sistema
 
 ```mermaid
 mindmap
