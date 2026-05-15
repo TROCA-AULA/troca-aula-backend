@@ -20,7 +20,7 @@ graph TB
         E[Entities]
     end
     
-    subgraphInfraestrutura
+    subgraph Infraestrutura
         P[Prisma<br/>PostgreSQL]
         A[Auth JWT]
     end

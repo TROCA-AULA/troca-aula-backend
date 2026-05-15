@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ClassesService } from './classes.service';
 import { ClassesRepository } from './classes.repository';
 import { UsersRepository } from '../users/users.repository';
+import { PrismaService } from '../../prisma.service';
 
 describe('ClassesService', () => {
   let service: ClassesService;
@@ -20,6 +21,17 @@ describe('ClassesService', () => {
     findOne: jest.fn(),
   };
 
+  const mockPrismaService = {
+    classes: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
+    users: {
+      findUnique: jest.fn(),
+    },
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -31,6 +43,10 @@ describe('ClassesService', () => {
         {
           provide: UsersRepository,
           useValue: mockUserRepository,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ClassesController } from './classes.controller';
 import { ClassesService } from './classes.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 describe('ClassesController', () => {
   let controller: ClassesController;
@@ -12,6 +13,12 @@ describe('ClassesController', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    enroll: jest.fn(),
+    unenroll: jest.fn(),
+  };
+
+  const mockAuthGuard = {
+    canActivate: jest.fn().mockReturnValue(true),
   };
 
   beforeEach(async () => {
@@ -23,7 +30,10 @@ describe('ClassesController', () => {
           useValue: mockClassesService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue(mockAuthGuard)
+      .compile();
 
     controller = module.get<ClassesController>(ClassesController);
     service = module.get<ClassesService>(ClassesService);

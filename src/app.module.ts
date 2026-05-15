@@ -10,7 +10,7 @@ import { ClassesModule } from './modules/classes/classes.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { PrismaModule } from './prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { SwapRequestsModule } from './modules/swap-requests/swap-requests.module';
+import { EnrollmentRequestsModule } from './modules/enrollment-requests/enrollment-requests.module';
 
 @Module({
   imports: [
@@ -25,7 +25,7 @@ import { SwapRequestsModule } from './modules/swap-requests/swap-requests.module
     SubjectsModule,
     ClassesModule,
     ProfileModule,
-    SwapRequestsModule,
+    EnrollmentRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

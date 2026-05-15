@@ -6,6 +6,82 @@ Este documento apresenta as historias de usuario do sistema Troca Aula, organiza
 
 ---
 
+## Mapa de User Stories
+
+```mermaid
+mindmap
+  root((User Stories))
+    Autenticacao
+      Login Gov.br
+      Logout
+      Recuperar Senha
+    Gestao de Aulas
+      Criar Aula Vaga
+      Editar Aula
+      Cancelar Aula
+      Listar Aulas
+    Gestao de Trocas
+      Solicitar Troca
+      Aceitar Troca
+      Rejeitar Troca
+      Cancelar Solicitacao
+    Gestao de Candidaturas
+      Criar Candidatura
+      Listar Candidaturas
+      Aprovar Candidato
+      Rejeitar Candidato
+    Perfil do Usuario
+      Ver Historico
+      Ver Limite
+      Atualizar Dados
+    Gestao Admin
+      Criar Escola
+      Adicionar Professor
+      Configurar Limites
+```
+
+### Diagrama de Priorização
+
+```mermaid
+graph TD
+    subgraph "MVP - Must Have"
+        US1[Solicitar Troca]
+        US2[Aceitar/Rejeitar Troca]
+        US3[Inscrever-se em Aula]
+        US4[Listar Aulas Vagas]
+        US5[Login Gov.br]
+    end
+    
+    subgraph "Futuro - Should Have"
+        US6[Notificacoes Push]
+        US7[Relatorios]
+        US8[App Mobile]
+    end
+    
+    subgraph "Futuro - Could Have"
+        US9[Integracao Calendario]
+        US10[Analytics Avancado]
+    end
+    
+    US1 --> US2
+    US2 --> US3
+    US3 --> US4
+    US4 --> US5
+    
+    style US1 fill:#f44336,color:#fff
+    style US2 fill:#f44336,color:#fff
+    style US3 fill:#f44336,color:#fff
+    style US4 fill:#f44336,color:#fff
+    style US5 fill:#f44336,color:#fff
+    style US6 fill:#ff9800,color:#fff
+    style US7 fill:#ff9800,color:#fff
+    style US8 fill:#ff9800,color:#fff
+    style US9 fill:#4CAF50,color:#fff
+    style US10 fill:#4CAF50,color:#fff
+```
+
+---
+
 ## User Story 1: Solicitar Troca de Aula
 
 **Prioridade**: P1 - MVP

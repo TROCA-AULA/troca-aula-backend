@@ -30,7 +30,7 @@ export class ClassesRepository {
   }
 
   findAll(params: GetClassDto) {
-    let where = {};
+    let where: any = {};
     if (params?.userId) {
       where = {
         OR: [
@@ -44,17 +44,40 @@ export class ClassesRepository {
     if (params?.schoolId) {
       where = {
         ...where,
-
         schoolId: params.schoolId,
       };
     }
-    if (Object.keys(where).length > 0) {
+    if (params?.available !== undefined) {
       where = {
-        where,
+        ...where,
+        available: params.available,
       };
     }
+    if (Object.keys(where).length > 0) {
+      return this.prisma.classes.findMany({
+        where,
+        include: {
+          school: true,
+          subject: true,
+          createdBy: {
+            include: {
+              upsUser: {
+                include: {
+                  profile: true,
+                },
+              },
+            },
+          },
+          approvedBy: true,
+          registredBy: true,
+          profile: true,
+        },
+        orderBy: {
+          statededAt: 'desc',
+        },
+      });
+    }
     return this.prisma.classes.findMany({
-      ...where,
       include: {
         school: true,
         subject: true,

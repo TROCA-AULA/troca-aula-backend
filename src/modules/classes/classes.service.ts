@@ -29,6 +29,7 @@ export class ClassesService {
       if (user?.upsUser[0].profileId != 3) {
         currentParams = {
           schoolId: user?.upsUser[0].schoolId,
+          available: params.available,
         };
       }
     }

@@ -6,6 +6,161 @@ Este documento descreve todas as regras de negocio do sistema Troca Aula, defini
 
 ---
 
+## Diagrama de Classes — Modelo de Domínio
+
+```mermaid
+classDiagram
+    class User {
+        +int id
+        +string name
+        +string email
+        +string phone
+        +string passwordHash
+        +datetime createdAt
+        +getProfile() Profile
+    }
+    
+    class Profile {
+        +int id
+        +string name
+        +string description
+        +hasPermission(permission) Boolean
+    }
+    
+    class School {
+        +int id
+        +string name
+        +string address
+        +getClasses() Class[]
+    }
+    
+    class Class {
+        +int id
+        +int schoolId
+        +int subjectId
+        +int dayOfWeek
+        +string startTime
+        +string endTime
+        +boolean isActive
+        +getEnrollment() Enrollment
+    }
+    
+    class Subject {
+        +int id
+        +string name
+        +string description
+    }
+    
+    class Enrollment {
+        +int id
+        +int classId
+        +int userId
+        +enum status
+        +datetime enrolledAt
+        +approve() void
+        +reject() void
+    }
+    
+    class UserProfileSchool {
+        +int userId
+        +int profileId
+        +int schoolId
+        +datetime approvedAt
+    }
+    
+    User "1" --> "*" UserProfileSchool
+    Profile "1" --> "*" UserProfileSchool
+    School "1" --> "*" UserProfileSchool
+    
+    School "1" --> "*" Class
+    Subject "1" --> "*" Class
+    Class "1" --> "0..1" Enrollment
+    User "1" --> "*" Enrollment
+```
+
+### Diagrama de Estados — Ciclo de Vida de uma Candidatura
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    
+    PENDING --> APPROVED: Diretor aprova
+    PENDING --> REJECTED: Diretor rejeita
+    PENDING --> CANCELLED: Candidato cancela
+    PENDING --> CANCELLED: Criador cancela
+    
+    APPROVED --> [*]
+    REJECTED --> [*]
+    CANCELLED --> [*]
+    
+    note right of PENDING: Aguardando<br/>aprovacao<br/>do diretor
+    note right of APPROVED: Substituicao<br/>oficializada
+    note right of REJECTED: Candidato<br/>notificado
+    note right of CANCELLED: Vaga volta<br/>a estar disponivel
+```
+
+### Diagrama de Estados — Ciclo de Vida de uma Aula Vaga
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE
+    
+    ACTIVE --> FILLED: Substituicao aprobada
+    ACTIVE --> CANCELLED: Cancelada
+    ACTIVE --> EXPIRED:逾时 sem candidatos
+    
+    FILLED --> [*]
+    CANCELLED --> [*]
+    EXPIRED --> [*]
+    
+    note right of ACTIVE: Visivel para<br/>candidaturas
+    note right of FILLED: Professor<br/>designado
+    note right of CANCELLED: Removida pelo<br/>criador/admin
+    note right of EXPIRED:超过了 janela<br/>de tempo
+```
+
+### Fluxo de Permissões por Perfil
+
+```mermaid
+graph TD
+    subgraph "Professor"
+        P1[Visualizar aulas vagas]
+        P2[Se candidatar]
+        P3[Cancelar propia candidatura]
+        P4[Visualizar historico]
+    end
+    
+    subgraph "Agente Administrativo"
+        A1[Criar aulas vagas]
+        A2[Editar aulas]
+        A3[Cancelar aulas]
+        A4[Visualizar tudo]
+    end
+    
+    subgraph "Diretor"
+        D1[Aprovar candidaturas]
+        D2[Rejeitar candidaturas]
+        D3[Gerenciar usuarios]
+        D4[Configurar regras]
+        D5[Visualizar relatorios]
+    end
+    
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    
+    D1 --> D2
+    D2 --> D3
+    D3 --> D4
+    D4 --> D5
+```
+
+---
+
 ## Regras de Autenticacao
 
 ### R001 - Login de Usuario

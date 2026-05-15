@@ -45,8 +45,7 @@ model Users {
 
   enrolledClasses Classes[] @relation("enrolledClasses")
 
-  swapRequestCreator SwapRequests[] @relation("swapRequestCreator")
-  swapRequestTarget  SwapRequests[] @relation("swapRequestTarget")
+  enrollmentRequests EnrollmentRequest[] @relation("enrollmentRequestProfessor")
 
   @@index([email])
 }
@@ -93,25 +92,18 @@ model UsersProfilesSchools {
   @@index([profileId])
 }
 
-model SwapRequests {
+model EnrollmentRequest {
   id          Int       @id @default(autoincrement())
-  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
-
-  class       Classes   @relation("swapRequestClass", fields: [classId], references: [id])
   classId     Int
-
-  requester   Users     @relation("swapRequestCreator", fields: [requesterId], references: [id])
-  requesterId Int
-
-  target      Users     @relation("swapRequestTarget", fields: [targetId], references: [id])
-  targetId    Int
-
+  class       Classes   @relation("classEnrollmentRequests", fields: [classId], references: [id])
+  professorId Int
+  professor   Users     @relation("enrollmentRequestProfessor", fields: [professorId], references: [id])
+  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([classId])
-  @@index([requesterId])
-  @@index([targetId])
+  @@index([professorId])
   @@index([status])
 }
 
@@ -148,5 +140,7 @@ model Classes {
   enrolledBy Users?    @relation("enrolledClasses", fields: [enrolledById], references: [id])
   enrolledById Int?
 
-  swapRequests SwapRequests[] @relation("swapRequestClass")
+  available Boolean @default(true)
+
+  enrollmentRequests EnrollmentRequest[] @relation("classEnrollmentRequests")
 }

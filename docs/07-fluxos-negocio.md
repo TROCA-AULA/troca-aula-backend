@@ -1,5 +1,115 @@
 # Fluxos de Negocio
 
+## Visão Geral dos Fluxos
+
+```mermaid
+graph LR
+    subgraph "Atores do Sistema"
+        P[Professor]
+        AA[Agente Admin]
+        D[Diretor]
+    end
+    
+    subgraph "Recursos"
+        AV[Aula Vaga]
+        C[Candidatura]
+        S[Substituicao]
+    end
+    
+    subgraph "Ações"
+        CRIAR[Criar]
+        BUSCAR[Buscar]
+        CANDIDATAR[Candidatar]
+        APPROVAR[Aprovar]
+        REJEITAR[Rejeitar]
+        CANCELAR[Cancelar]
+    end
+    
+    %% Fluxos passando pelas ações
+    AA --> CRIAR --> AV
+    P --> BUSCAR --> AV
+    P --> CANDIDATAR --> C
+    D --> APPROVAR --> C
+    D --> REJEITAR --> C
+    P --> CANCELAR --> C
+    C --> APPROVAR --> S
+```
+
+### Mapa Mental — Fluxos de Negócio
+
+```mermaid
+mindmap
+  root((Fluxos de Negocio))
+    Gestao de Aulas
+      Criar Aula Vaga
+      Editar Aula
+      Cancelar Aula
+      Listar Aulas
+    Gestao de Candidaturas
+      Criar Candidatura
+      Aprovar
+      Rejeitar
+      Cancelar
+    Gestao de Usuarios
+      Criar Usuario
+      Ativar/Desativar
+      Associar Escola
+      Definir Perfil
+    Gestao de Escolas
+      Criar Escola
+      Configurar Regras
+      Adicionar Professores
+    Gestao de Limites
+      Definir Teto
+      Monitorar Uso
+      Alertar Proximo
+      Bloquear Excedido
+```
+
+### Diagrama de Atividades — Processo Completo de Substituição
+
+```mermaid
+flowchart TB
+    subgraph "Fase 1: Criação da Vaga"
+        A1[Professor/AAdmin identifica ausencia] --> A2[Acessa sistema]
+        A2 --> A3[Preenche dados da aula vaga]
+        A3 --> A4[Confirma criacao]
+    end
+    
+    subgraph "Fase 2: Candidatura"
+        B1[Professor visualiza vagas] --> B2[Analisa detalhes]
+        B2 --> B3{Filtros se aplicam?}
+        B3 -->|Sim| B4[Clica em Candidatar-se]
+        B3 -->|Nao| B5[Busca outra vaga]
+        B4 --> B6[Sistema valida condicoes]
+        B6 --> B7{Passo em todas?}
+        B7 -->|Nao| B8[Exibe motivo]
+        B7 -->|Sim| B9[Cria registro PENDING]
+    end
+    
+    subgraph "Fase 3: Aprovacao"
+        C1[Diretor recebe notificacao] --> C2[Analisa candidato]
+        C2 --> C3{Esta adequado?}
+        C3 -->|Nao| C4[Rejeita + motivo]
+        C3 -->|Sim| C5[Aprova solicitacao]
+        C4 --> C6[Notifica candidato]
+        C5 --> C7[Atualiza status]
+        C7 --> C8[Decrementa limite]
+        C8 --> C9[Registra no historico]
+    end
+    
+    subgraph "Fase 4: Execucao"
+        D1[Professor substituto<br/>assume a aula] --> D2[Aula ministrada]
+        D2 --> D3[Registro completado]
+    end
+    
+    A4 --> B1
+    B9 --> C1
+    C9 --> D1
+```
+
+---
+
 ## Fluxo Macro: Sistema de Troca de Aulas
 
 ```mermaid
@@ -228,17 +338,18 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[Verificar Conflito] --> B[dayOfWeek valido?]
+    A[Verificar Conflito] --> B{dayOfWeek valido?}
     
-    B -->|Nao| C[Return false]
-    B -->|Sim| D[Buscar aulas do target<br/>no mesmo dayOfWeek]
+    B -->|Não| C[Return false]
+    B -->|Sim| D[Buscar aulas do target no mesmo dayOfWeek]
     
     D --> E{Cada aula}
     
-    E -->|Aula com horario| F{Horarios sobrepoem?}
-    F -->|Sim| G[Return true (conflito)]
-    F -->|Nao| E
-    E -->|Sem mais| H[Return false (sem conflito)]
+    E -->|Com horário| F{Horários sobrepõem?}
+    F -->|Sim| G[Return true - conflito]
+    F -->|Não| E
+    
+    E -->|Sem mais| H[Return false - sem conflito]
     
     G --> I[Fim]
     H --> I

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional } from 'class-validator';
+import { IsNumber, IsOptional, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GetClassDto {
@@ -14,4 +14,9 @@ export class GetClassDto {
   @IsOptional()
   @Type(() => Number)
   schoolId?: number;
+
+  @ApiPropertyOptional()
+  @IsBoolean()
+  @IsOptional()
+  available?: boolean;
 }

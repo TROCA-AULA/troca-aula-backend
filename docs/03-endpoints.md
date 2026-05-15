@@ -31,23 +31,15 @@ Login de usuario no sistema.
 
 ---
 
-## Swap Requests (Troca de Aulas)
+## Enrollment Requests (Inscricao com Aprovacao)
 
-### POST /swap-requests
+### POST /enrollment-requests/request/:classId
 
-Criar uma nova solicitacao de troca de aula.
+Professor solicita inscricao em uma aula disponivel.
 
 **Headers**: `Authorization: Bearer <token>`
 
-**Authorization**: Apenas perfil **DIRETOR** ou **AUXILIAR_ADMIN**
-
-**Body**:
-```json
-{
-  "classId": 1,
-  "targetId": 2
-}
-```
+**Authorization**: Apenas professor autenticado
 
 **Response (201)**:
 ```json
@@ -55,8 +47,7 @@ Criar uma nova solicitacao de troca de aula.
   "data": {
     "id": 1,
     "classId": 1,
-    "requesterId": 3,
-    "targetId": 2,
+    "professorId": 2,
     "status": "PENDING",
     "createdAt": "2026-05-14T10:00:00Z",
     "updatedAt": "2026-05-14T10:00:00Z"
@@ -67,27 +58,32 @@ Criar uma nova solicitacao de troca de aula.
 ```
 
 **Erros**:
-- 400: Conflito de horario detectado
-- 403: Apenas diretor/admin pode criar
+- 400: Aula nao esta disponivel / Ja existe solicitacao pendente / Conflito de horario
+- 403: Você so pode se candidatar a aulas da sua materia
 - 404: Aula ou professor nao encontrado
 
 ---
 
-### GET /swap-requests
+### GET /enrollment-requests
 
-Listar solicitacoes de troca com filtros.
+Listar solicitacoes de inscricao.
 
 **Headers**: `Authorization: Bearer <token>`
+
+**Authorization**: 
+- **DIRETOR/AUXILIAR_ADMIN**: ve todas as solicitacoes da escola
+- **PROFESSOR**: ve apenas suas proprias solicitacoes
 
 **Query Params** (opcionais):
 | Parametro | Tipo | Descricao |
 |-----------|------|------------|
 | status | string | PENDING, APPROVED, REJECTED, CANCELLED |
-| type | string | "created" (criadas por mim) ou "received" (recebidas) |
+| classId | number | Filtrar por aula |
+| professorId | number | Filtrar por professor |
 
 **Exemplo**:
 ```
-GET /swap-requests?status=PENDING&type=received
+GET /enrollment-requests?status=PENDING
 ```
 
 **Response (200)**:
@@ -97,8 +93,7 @@ GET /swap-requests?status=PENDING&type=received
     {
       "id": 1,
       "classId": 1,
-      "requesterId": 3,
-      "targetId": 2,
+      "professorId": 2,
       "status": "PENDING",
       "createdAt": "2026-05-14T10:00:00Z"
     }
@@ -110,7 +105,7 @@ GET /swap-requests?status=PENDING&type=received
 
 ---
 
-### GET /swap-requests/:id
+### GET /enrollment-requests/:id
 
 Detalhar uma solicitacao especifica.
 
@@ -120,8 +115,7 @@ Detalhar uma solicitacao especifica.
   "data": {
     "id": 1,
     "classId": 1,
-    "requesterId": 3,
-    "targetId": 2,
+    "professorId": 2,
     "status": "PENDING",
     "createdAt": "2026-05-14T10:00:00Z",
     "updatedAt": "2026-05-14T10:00:00Z"
@@ -133,11 +127,15 @@ Detalhar uma solicitacao especifica.
 
 ---
 
-### PATCH /swap-requests/:id/accept
+### PATCH /enrollment-requests/:id/approve
 
-Aceitar uma solicitacao de troca.
+Diretor aprova uma solicitacao de inscricao.
 
-**Authorization**: Apenas professor da **mesma materia** da aula
+**Authorization**: Apenas **DIRETOR** ou **AUXILIAR_ADMIN** da escola da aula
+
+**Efeito**: 
+- Professor e vinculado a aula (`enrolledById`)
+- Aula deixa de estar disponivel (`available = false`)
 
 **Response (200)**:
 ```json
@@ -147,22 +145,22 @@ Aceitar uma solicitacao de troca.
     "status": "APPROVED",
     "updatedAt": "2026-05-14T11:00:00Z"
   },
-  "message": "Solicitacao aceita",
+  "message": "Solicitacao aprovada",
   "statusCode": 200
 }
 ```
 
 **Erros**:
 - 400: Solicitacao nao esta pendente
-- 403: Apenas professor替代 pode aceitar / Voce so pode aceitar aulas da sua materia
+- 403: Apenas diretor da escola pode aprovar
 
 ---
 
-### PATCH /swap-requests/:id/reject
+### PATCH /enrollment-requests/:id/reject
 
-Rejeitar uma solicitacao de troca.
+Diretor rejeita uma solicitacao de inscricao.
 
-**Authorization**: Apenas professor替代
+**Authorization**: Apenas **DIRETOR** ou **AUXILIAR_ADMIN** da escola da aula
 
 **Response (200)**:
 ```json
@@ -177,15 +175,21 @@ Rejeitar uma solicitacao de troca.
 }
 ```
 
+**Erros**:
+- 400: Solicitacao nao esta pendente
+- 403: Apenas diretor da escola pode rejeitar
+
 ---
 
-### PATCH /swap-requests/:id/cancel
+### DELETE /enrollment-requests/:id
 
-Cancelar uma solicitacao de troca.
+Cancelar uma solicitacao de inscricao.
 
-**Authorization**: Apenas criador da solicitacao (requester)
+**Authorization**: Apenas professor que criou a solicitacao
 
-**Condicao**: Apenas se status = PENDING
+**Casos**:
+- Se PENDING: apenas cancela a solicitacao
+- Se APPROVED: cancela e libera a aula (available=true, enrolledById=null)
 
 **Response (200)**:
 ```json
@@ -213,6 +217,7 @@ Listar todas as aulas.
 |-----------|------|------------|
 | schoolId | number | Filtrar por escola |
 | userId | number | Filtrar por professor |
+| available | boolean | Filtrar por disponibilidade (true/false) |
 
 **Response (200)**:
 ```json
@@ -224,7 +229,9 @@ Listar todas as aulas.
       "subjectId": 1,
       "dayOfWeek": 1,
       "startTime": "08:00",
-      "endTime": "09:00"
+      "endTime": "09:00",
+      "available": true,
+      "enrolledById": null
     }
   ],
   "message": "Sucesso",
@@ -234,43 +241,97 @@ Listar todas as aulas.
 
 ---
 
-### POST /classes/:id/enroll
+### POST /classes
 
-Professor se increver em uma aula.
+Criar uma nova aula.
 
-**Authorization**: Qualquer professor autenticado
+**Headers**: `Authorization: Bearer <token>`
+
+**Authorization**: **DIRETOR** ou **AUXILIAR_ADMIN**
+
+**Body**:
+```json
+{
+  "schoolId": 1,
+  "subjectId": 1,
+  "createdByd": 1,
+  "statededAt": "2026-05-01T00:00:00Z",
+  "finishedAt": "2026-12-31T00:00:00Z"
+}
+```
+
+**Response (201)**:
+```json
+{
+  "data": {
+    "id": 1,
+    "schoolId": 1,
+    "subjectId": 1,
+    "available": true,
+    "createdAt": "2026-05-14T10:00:00Z"
+  },
+  "message": "Aula criada com sucesso",
+  "statusCode": 201
+}
+```
+
+---
+
+### GET /classes/:id
+
+Detalhar uma aula especifica.
 
 **Response (200)**:
 ```json
 {
   "data": {
     "id": 1,
+    "schoolId": 1,
+    "subjectId": 1,
+    "dayOfWeek": 1,
+    "startTime": "08:00",
+    "endTime": "09:00",
+    "available": false,
     "enrolledById": 2
   },
-  "message": "Inscricao realizada",
+  "message": "Sucesso",
   "statusCode": 200
 }
 ```
 
-**Erros**:
-- 400: Aula ja esta inscrita por outro professor / Voce ja esta inscrito
-
 ---
 
-### DELETE /classes/:id/enroll
+### PATCH /classes/:id
 
-Cancelar inscricao em uma aula.
+Atualizar uma aula.
 
-**Authorization**: Apenas professor inscrito
+**Authorization**: **DIRETOR** ou **AUXILIAR_ADMIN**
 
 **Response (200)**:
 ```json
 {
   "data": {
     "id": 1,
-    "enrolledById": null
+    "updatedAt": "2026-05-14T11:00:00Z"
   },
-  "message": "Inscricao cancelada",
+  "message": "Aula atualizada",
+  "statusCode": 200
+}
+```
+
+---
+
+### DELETE /classes/:id
+
+Excluir uma aula.
+
+**Authorization**: **DIRETOR** ou **AUXILIAR_ADMIN**
+
+**Response (200)**:
+```json
+{
+  "data": null,
+  "message": "Aula excluida",
   "statusCode": 200
 }
 ```
@@ -312,6 +373,24 @@ Criar escola.
 
 ---
 
+### GET /schools/:id
+
+Detalhar escola.
+
+---
+
+### PATCH /schools/:id
+
+Atualizar escola.
+
+---
+
+### DELETE /schools/:id
+
+Excluir escola.
+
+---
+
 ## Subjects (Disciplinas)
 
 ### GET /subjects
@@ -329,6 +408,19 @@ Listar disciplinas.
   ],
   "message": "Sucesso",
   "statusCode": 200
+}
+```
+
+---
+
+### POST /subjects
+
+Criar disciplina.
+
+**Body**:
+```json
+{
+  "name": "Historia"
 }
 ```
 
@@ -379,7 +471,7 @@ Criar usuario.
 
 ## Profiles (Perfis)
 
-### GET /profiles
+### GET /profile
 
 Listar perfis disponiveis.
 
@@ -403,11 +495,18 @@ Listar perfis disponiveis.
 | Endpoint | Metodo | Authorization | Descricao |
 |----------|--------|---------------|------------|
 | /auth/login | POST | None | Login |
-| /swap-requests | POST | DIRETOR/ADMIN | Criar troca |
-| /swap-requests | GET | JWT | Listar |
-| /swap-requests/:id | GET | JWT | Detalhar |
-| /swap-requests/:id/accept | PATCH | PROFESSOR da materia | Aceitar |
-| /swap-requests/:id/reject | PATCH | PROFESSOR替代 | Rejeitar |
-| /swap-requests/:id/cancel | PATCH | Criador (se PENDING) | Cancelar |
-| /classes/:id/enroll | POST | PROFESSOR | Inscrever |
-| /classes/:id/enroll | DELETE | PROFESSOR inscrito | Cancelar |
+| /enrollment-requests/request/:classId | POST | PROFESSOR | Solicitar inscricao |
+| /enrollment-requests | GET | JWT | Listar solicitacoes |
+| /enrollment-requests/:id | GET | JWT | Detalhar solicitacao |
+| /enrollment-requests/:id/approve | PATCH | DIRETOR | Aprovar inscricao |
+| /enrollment-requests/:id/reject | PATCH | DIRETOR | Rejeitar inscricao |
+| /enrollment-requests/:id | DELETE | PROFESSOR | Cancelar solicitacao |
+| /classes | GET | JWT | Listar aulas |
+| /classes | POST | DIRETOR | Criar aula |
+| /classes/:id | GET | JWT | Detalhar aula |
+| /classes/:id | PATCH | DIRETOR | Atualizar aula |
+| /classes/:id | DELETE | DIRETOR | Excluir aula |
+| /schools | GET/POST | JWT | Listar/Criar escolas |
+| /subjects | GET/POST | JWT | Listar/Criar disciplinas |
+| /users | GET/POST | JWT | Listar/Criar usuarios |
+| /profile | GET | JWT | Listar perfis |
