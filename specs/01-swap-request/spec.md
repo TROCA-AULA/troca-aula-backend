@@ -142,13 +142,14 @@ Como professor, quero cancelar uma solicitação de troca que fiz, antes que sej
 
 ### Functional Requirements
 
-- **FR-001**: Sistema DEVE permitir professor criar solicitação de troca de aula
-- **FR-002**: Sistema DEVE verificar conflitos de horário antes de criar solicitação
-- **FR-003**: Professor substituto DEVE poder aceitar ou recusar solicitação
+- **FR-001**: Sistema DEVE permitir solicitação de troca de aula (criado por diretor/admin)
+- **FR-002**: Sistema DEVE verificar conflitos de horário (mesmo dia + horário sobreposto)
+- **FR-003**: Professor substituto DEVE poder aceitar/rejeitar apenas aulas da sua matéria
 - **FR-004**: Sistema DEVE listar solicitações filtrando por status
 - **FR-005**: Sistema DEVE permitir cancelamento de solicitações pendentes
-- **FR-006**: Apenas professor associado à aula pode criar solicitação
-- **FR-007**: Apenas professor替代 pode aceitar/recusar
+- **FR-006**: Apenas diretor ou auxiliar administrativo da escola pode criar SwapRequest
+- **FR-007**: Apenas professor da mesma matéria pode aceitar swap
+- **FR-008**: Professor DEVE poder-se inscribir/desinscrever de aulas
 
 ### Non-Functional Requirements
 
@@ -175,15 +176,28 @@ SwapRequest 1 --> 1 User (professor替代)
 
 ## Success Criteria
 
-- **SC-001**: Professor consegue criar solicitação de troca em menos de 30 segundos
-- **SC-002**: Conflitos de horário são detectados antes da criação
-- **SC-003**: Fluxo completo de troca (criar → aceitar → aprovado) funciona sem erros
+- **SC-001**: Conflitos de horário são detectados antes da criação (mesmo dia + sobreposição)
+- **SC-002**: Fluxo completo de troca (criar → aceitar → aprovado) funciona sem erros
+- **SC-003**: Apenas professores da matéria podem aceitar swap
 
 ---
 
 ## Assumptions
 
-- Professors já existem no sistema (Users com profile de professor)
-- Aulas (Classes) já estão cadastradas com horários
+- Professores e diretores já existem no sistema (Users com profile de professor/diretor)
+- Aulas (Classes) atualmente não têm campos de horário - precisa adicionar dayOfWeek, startTime, endTime
 - Sistema será usado por uma única escola inicialmente (simplicidade)
 - Notificações serão simplificadas (sem push/email real - apenas registro em banco)
+- Perfil de usuário determina permissões: diretor/admin podem criar swap, professor pode aceitar apenas da matéria
+
+---
+
+## Clarifications
+
+### Session 2026-05-14
+
+- Q: Dados de horário das Classes já existem ou precisam ser adicionados? → A: Adicionar campos de horário no modelo Class via Prisma (dayOfWeek, startTime, endTime)
+- Q: O que define "conflito de horário"? → A: Mesmo dia + horário sobreposto (dayOfWeek = dayOfWeek AND horário se sobrepõe)
+- Q: SC-001 (menos de 30 segundos) deve ser mantido como requisito formal? → A: Remover SC-001 (não é crítico para MVP)
+- Q: Como identificar o professor替代 na requisição? → A: targetId (user ID) no corpo da requisição POST
+- Q: Quem pode criar SwapRequest e quem pode aceitar? → A: Apenas diretor/auxiliar administrativo cria swap; Professor só aceita swap da matéria dele; Professor pode se increver/desinscrever de aulas

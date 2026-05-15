@@ -10,6 +10,7 @@ import { ClassesModule } from './modules/classes/classes.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { PrismaModule } from './prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { SwapRequestsModule } from './modules/swap-requests/swap-requests.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from './modules/auth/auth.module';
     SubjectsModule,
     ClassesModule,
     ProfileModule,
+    SwapRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

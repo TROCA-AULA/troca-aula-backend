@@ -8,7 +8,11 @@
 
 ## Summary
 
-Criar módulo de solicitação de trocas de aulas entre professores. O professor solicita troca de uma de suas aulas, o professor substituto pode aceitar ou recusar, e o sistema verifica conflitos de horário.
+Criar módulo de solicitação de trocas de aulas entre professores.
+- Apenas diretor/auxiliar administrativo pode criar SwapRequest (FR-006)
+- Professor substituto só pode aceitar swap da mesma matéria (FR-007)
+- Conflito = mesmo dia + horário sobreposto (FR-002)
+- Professor pode se increver/desinscrever de aulas (FR-008)
 
 ---
 
@@ -106,16 +110,35 @@ Adicionar campos de horário:
 
 ## Contratos de API
 
-### Endpoints
+### Endpoints - SwapRequest
 
-| Método | Endpoint | Descrição |
-|--------|----------|------------|
-| POST | /swap-requests | Criar solicitação de troca |
-| GET | /swap-requests | Listar solicitações (filtros) |
-| GET | /swap-requests/:id | Detalhar solicitação |
-| PATCH | /swap-requests/:id/accept | Aceitar solicitação |
-| PATCH | /swap-requests/:id/reject | Rejeitar solicitação |
-| PATCH | /swap-requests/:id/cancel | Cancelar solicitação |
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|------------|-------------|
+| POST | /swap-requests | Criar solicitação de troca | Apenas diretor/admin |
+| GET | /swap-requests | Listar solicitações (filtros) | Autenticado |
+| GET | /swap-requests/:id | Detalhar solicitação | Autenticado |
+| PATCH | /swap-requests/:id/accept | Aceitar solicitação | Apenas professor da matéria |
+| PATCH | /swap-requests/:id/reject | Rejeitar solicitação | Apenas professor da matéria |
+| PATCH | /swap-requests/:id/cancel | Cancelar solicitação | Apenas criador (se PENDING) |
+
+### Endpoints - Enrollment (FR-008)
+
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|------------|-------------|
+| POST | /classes/:id/enroll | Inscrever-se na aula | Apenas professor |
+| DELETE | /classes/:id/enroll | Cancelar inscrição | Apenas professor |
+
+### Regras de Autorização
+
+- **POST /swap-requests**: user.profile = DIRETOR ou AUXILIAR_ADMIN
+- **PATCH .../accept**: target deve ser professor da mesma subject da class
+- **PATCH .../cancel**: apenas requesterId se status = PENDING
+
+### Conflito de Horário
+
+Dois swaps conflitam se:
+- dayOfWeek = dayOfWeek E
+- (startTime < outra.endTime AND endTime > outra.startTime)
 
 ### Response Format
 

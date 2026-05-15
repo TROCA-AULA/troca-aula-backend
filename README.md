@@ -24,7 +24,21 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend do sistema **Troca Aula** - plataforma para gerenciamento e facilitação de substituição de professores, evitando aulas vagas.
+
+### Funcionalidades
+
+- **Autenticação**: JWT com bcrypt
+- **CRUD**: Users, Schools, Subjects, Classes, Profiles
+- **Troca de Aulas**: Sistema de solicitações de troca entre professores
+- **Inscrição**: Professores podem se increver/desinscrever de aulas
+
+### Tecnologias
+
+- NestJS + TypeScript
+- Prisma ORM
+- PostgreSQL
+- Docker
 
 ## Project setup
 
@@ -44,6 +58,51 @@ $ pnpm run start:dev
 # production mode
 $ pnpm run start:prod
 ```
+
+## API Endpoints
+
+### Autenticação
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /auth/login | Login com email e senha |
+
+### Swap Requests (Troca de Aulas)
+
+Requer autenticação JWT (`Authorization: Bearer <token>`)
+
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|-----------|--------------|
+| POST | /swap-requests | Criar solicitação de troca | Apenas DIRETOR ou AUXILIAR_ADMIN |
+| GET | /swap-requests | Listar solicitações | Autenticado |
+| GET | /swap-requests/:id | Detalhar solicitação | Autenticado |
+| PATCH | /swap-requests/:id/accept | Aceitar solicitação | Apenas professor da mesma matéria |
+| PATCH | /swap-requests/:id/reject | Rejeitar solicitação | Apenas professor da mesma matéria |
+| PATCH | /swap-requests/:id/cancel | Cancelar solicitação | Apenas criador (se PENDING) |
+
+**Query Params (GET /swap-requests)**:
+- `status`: PENDING, APPROVED, REJECTED, CANCELLED
+- `type`: "created" (criadas por mim) | "received" (recebidas para mim)
+
+### Classes (Aulas)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /classes/:id/enroll | Inscrever-se na aula |
+| DELETE | /classes/:id/enroll | Cancelar inscrição |
+
+### Schools (Escolas)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /schools | Listar escolas |
+| POST | /schools | Criar escola |
+
+### Regras de Negócio
+
+1. **Criar SwapRequest**: Apenas usuário com perfil DIRETOR ou AUXILIAR_ADMIN
+2. **Aceitar Swap**: Apenas professor da mesma matéria da aula
+3. **Conflito de horário**: Mesmo dia + horário sobreposto = conflito
 
 ## Run tests
 

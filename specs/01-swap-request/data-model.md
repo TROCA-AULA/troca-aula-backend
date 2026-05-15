@@ -44,7 +44,8 @@ erDiagram
 
 ## Regras de Negócio
 
-1. **Criação**: Apenas professor associado à class pode criar solicitação
-2. **Conflito**: Não permitir criação se houver conflito de horário entre as aulas dos professores
-3. **Aceitação**: Apenas target (professor替代) pode aceitar/rejeitar
+1. **Criação**: Apenas usuário com perfil DIRETOR ou AUXILIAR_ADMIN pode criar SwapRequest
+2. **Conflito**: Mesmo dia (dayOfWeek) + horário sobreposto = conflito
+3. **Aceitação**: Apenas professor da mesma matéria (subject) da class pode aceitar/rejeitar
 4. **Cancelamento**: Apenas requester pode cancelar, e apenas se status = PENDING
+5. **Validação**: Verificar que target leciona a mesma disciplina (class.subjectId = target.disciplina)

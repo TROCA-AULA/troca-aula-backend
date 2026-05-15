@@ -8,6 +8,8 @@ Criar solicitação de troca de aula.
 
 **Headers**: `Authorization: Bearer <token>`
 
+**Authorization**: Apenas perfil DIRETOR ou AUXILIAR_ADMIN
+
 **Request Body**:
 ```json
 {
@@ -38,6 +40,14 @@ Criar solicitação de troca de aula.
 {
   "message": "Conflito de horário detectado",
   "statusCode": 400
+}
+```
+
+**Response (403 - Não autorizado)**:
+```json
+{
+  "message": "Apenas diretor ou admin pode criar solicitação",
+  "statusCode": 403
 }
 ```
 
@@ -99,7 +109,9 @@ Detalhar uma solicitação específica.
 
 ### 4. PATCH /swap-requests/:id/accept
 
-Aceitar uma solicitação (apenas target).
+Aceitar uma solicitação.
+
+**Authorization**: Apenas professor da mesma matéria da class (class.subjectId = target.materia)
 
 **Response (200)**:
 ```json
@@ -118,7 +130,9 @@ Aceitar uma solicitação (apenas target).
 
 ### 5. PATCH /swap-requests/:id/reject
 
-Rejeitar uma solicitação (apenas target).
+Rejeitar uma solicitação.
+
+**Authorization**: Apenas professor da mesma matéria da class
 
 **Response (200)**:
 ```json
@@ -137,7 +151,9 @@ Rejeitar uma solicitação (apenas target).
 
 ### 6. PATCH /swap-requests/:id/cancel
 
-Cancelar uma solicitação (apenas requester, se PENDING).
+Cancelar uma solicitação.
+
+**Authorization**: Apenas criador da solicitação (requesterId), apenas se status = PENDING
 
 **Response (200)**:
 ```json
