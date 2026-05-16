@@ -4,7 +4,11 @@ import { EnrollmentRequestsRepository } from './enrollment-requests.repository';
 import { UsersRepository } from '../users/users.repository';
 import { ClassesRepository } from '../classes/classes.repository';
 import { PrismaService } from '../../prisma.service';
-import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 
 describe('EnrollmentRequestsService', () => {
   let service: EnrollmentRequestsService;
@@ -54,7 +58,9 @@ describe('EnrollmentRequestsService', () => {
     }).compile();
 
     service = module.get<EnrollmentRequestsService>(EnrollmentRequestsService);
-    repository = module.get<EnrollmentRequestsRepository>(EnrollmentRequestsRepository);
+    repository = module.get<EnrollmentRequestsRepository>(
+      EnrollmentRequestsRepository,
+    );
     userRepository = module.get<UsersRepository>(UsersRepository);
     classesRepository = module.get<ClassesRepository>(ClassesRepository);
     prisma = module.get<PrismaService>(PrismaService);
@@ -79,7 +85,12 @@ describe('EnrollmentRequestsService', () => {
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
       mockPrisma.enrollmentRequest.findFirst.mockResolvedValue(null);
-      mockRepository.create.mockResolvedValue({ id: 1, classId: 1, professorId: 2, status: 'PENDING' });
+      mockRepository.create.mockResolvedValue({
+        id: 1,
+        classId: 1,
+        professorId: 2,
+        status: 'PENDING',
+      });
 
       const result = await service.create(1, 2);
 
@@ -95,7 +106,10 @@ describe('EnrollmentRequestsService', () => {
     });
 
     it('should throw BadRequestException when class not available', async () => {
-      mockClassesRepository.findOne.mockResolvedValue({ id: 1, available: false });
+      mockClassesRepository.findOne.mockResolvedValue({
+        id: 1,
+        available: false,
+      });
 
       await expect(service.create(1, 2)).rejects.toThrow(BadRequestException);
     });
@@ -151,7 +165,9 @@ describe('EnrollmentRequestsService', () => {
       const result = await service.findAll({}, 2);
 
       expect(mockRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ professorId: 2 }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ professorId: 2 }),
+        }),
       );
     });
   });
@@ -176,13 +192,19 @@ describe('EnrollmentRequestsService', () => {
   describe('approve', () => {
     it('should approve enrollment request and link professor', async () => {
       const request = { id: 1, classId: 1, professorId: 2, status: 'PENDING' };
-      const director = { id: 3, upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }] };
+      const director = {
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      };
       const classData = { id: 1, schoolId: 1, subjectId: 1 };
 
       mockRepository.findOne.mockResolvedValue(request);
       mockPrisma.users.findUnique.mockResolvedValue(director);
       mockPrisma.classes.findUnique.mockResolvedValue(classData);
-      mockRepository.update.mockResolvedValue({ ...request, status: 'APPROVED' });
+      mockRepository.update.mockResolvedValue({
+        ...request,
+        status: 'APPROVED',
+      });
 
       const result = await service.approve(1, 3);
 
@@ -204,13 +226,19 @@ describe('EnrollmentRequestsService', () => {
   describe('reject', () => {
     it('should reject enrollment request', async () => {
       const request = { id: 1, classId: 1, status: 'PENDING' };
-      const director = { id: 3, upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }] };
+      const director = {
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      };
       const classData = { id: 1, schoolId: 1 };
 
       mockRepository.findOne.mockResolvedValue(request);
       mockPrisma.users.findUnique.mockResolvedValue(director);
       mockPrisma.classes.findUnique.mockResolvedValue(classData);
-      mockRepository.update.mockResolvedValue({ ...request, status: 'REJECTED' });
+      mockRepository.update.mockResolvedValue({
+        ...request,
+        status: 'REJECTED',
+      });
 
       const result = await service.reject(1, 3);
 
@@ -222,7 +250,10 @@ describe('EnrollmentRequestsService', () => {
     it('should cancel own pending request', async () => {
       const request = { id: 1, classId: 1, professorId: 2, status: 'PENDING' };
       mockRepository.findOne.mockResolvedValue(request);
-      mockRepository.update.mockResolvedValue({ ...request, status: 'CANCELLED' });
+      mockRepository.update.mockResolvedValue({
+        ...request,
+        status: 'CANCELLED',
+      });
 
       const result = await service.cancel(1, 2);
 
@@ -242,7 +273,10 @@ describe('EnrollmentRequestsService', () => {
 
       mockRepository.findOne.mockResolvedValue(request);
       mockPrisma.classes.findUnique.mockResolvedValue(classData);
-      mockRepository.update.mockResolvedValue({ ...request, status: 'CANCELLED' });
+      mockRepository.update.mockResolvedValue({
+        ...request,
+        status: 'CANCELLED',
+      });
 
       await service.cancel(1, 2);
 

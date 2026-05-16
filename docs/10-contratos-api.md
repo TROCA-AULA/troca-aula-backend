@@ -46,6 +46,37 @@ curl -X POST http://localhost:3000/auth/login \
 
 ---
 
+## Autenticação Gov.br
+
+### POST /auth/login-govbr
+
+Autenticação via Conta Gov.br (em desenvolvimento).
+
+**Curl:**
+```bash
+curl -X POST http://localhost:3000/auth/login-govbr \
+  -H "Content-Type: application/json" \
+  -d '{"token": "govbr_token_aqui"}'
+```
+
+**Payload (Request):**
+```json
+{
+  "token": "govbr_token_aqui"
+}
+```
+
+**Response (401) — Recurso em desenvolvimento:**
+```json
+{
+  "statusCode": 401,
+  "message": "Recurso em desenvolvimento",
+  "error": "Unauthorized"
+}
+```
+
+---
+
 ## Users (Usuários)
 
 ### POST /users
@@ -237,7 +268,8 @@ curl -X POST http://localhost:3000/schools \
 **Payload:**
 ```json
 {
-  "name": "Escola Municipal João Paulo"
+  "name": "Escola Municipal João Paulo",
+  "substitutionLimitPerSemester": 10
 }
 ```
 
@@ -247,6 +279,7 @@ curl -X POST http://localhost:3000/schools \
   "data": {
     "id": 1,
     "name": "Escola Municipal João Paulo",
+    "substitutionLimitPerSemester": 10,
     "createdAt": "2026-05-15T10:00:00.000Z"
   },
   "message": "Escola criada com sucesso",
@@ -643,7 +676,7 @@ curl -X POST http://localhost:3000/enrollment-requests/request/1 \
 ```
 
 **Erros:**
-- 400: "Aula não disponível" / "Já existe candidatura pendente" / "Conflito de horário detectado"
+- 400: "Aula não disponível" / "Já existe candidatura pendente" / "Conflito de horário detectado" / "Limite de substituições atingido para este semestre"
 - 403: "Você só pode se candidatar a aulas da sua matéria"
 - 404: "Aula não encontrada"
 
@@ -844,6 +877,7 @@ curl -X DELETE http://localhost:3000/profile/1 \
 | Módulo | Método | Endpoint | Auth | Descrição |
 |--------|--------|----------|------|------------|
 | Auth | POST | /auth/login | ❌ | Login |
+| Auth | POST | /auth/login-govbr | ❌ | Login Gov.br (em desenvolvimento) |
 | Users | GET | /users | ✅ | Lista usuários |
 | Users | POST | /users | ❌ | Cria usuário |
 | Users | GET | /users/:id | ✅ | Busca usuário |

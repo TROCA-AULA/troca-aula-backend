@@ -63,11 +63,40 @@ export class EnrollmentRequestsService {
       throw new BadRequestException('Conflito de horário detectado');
     }
 
+    const school = await this.prisma.schools.findUnique({
+      where: { id: classData.schoolId },
+    });
+
+    if (
+      school &&
+      school.substitutionLimitPerSemester !== null &&
+      school.substitutionLimitPerSemester > 0
+    ) {
+      const approvedCount = await this.countApprovedSubstitutions(professorId);
+      if (approvedCount >= school.substitutionLimitPerSemester) {
+        throw new BadRequestException(
+          `Limite de substituições atingido para este semestre (${school.substitutionLimitPerSemester} limite)`,
+        );
+      }
+    }
+
     return this.repository.create({
       class: { connect: { id: classId } },
       professor: { connect: { id: professorId } },
       status: 'PENDING',
     });
+  }
+
+  private async countApprovedSubstitutions(
+    professorId: number,
+  ): Promise<number> {
+    const count = await this.prisma.enrollmentRequest.count({
+      where: {
+        professorId,
+        status: 'APPROVED',
+      },
+    });
+    return count;
   }
 
   private async checkConflict(

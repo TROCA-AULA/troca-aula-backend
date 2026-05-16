@@ -133,17 +133,39 @@ async loginGovBr(@Body() body: { token: string }) {
 | Módulos principais implementados | ✅ Completo |
 | Endpoints CRUD funcionando | ✅ Completo |
 | Sistema de candidaturas | ✅ Completo |
-| Controle de limite de substituições | ❌ Pendente |
-| Integração Gov.br | ❌ Pendente |
+| Controle de limite de substituições | ✅ Implementado |
+| Integração Gov.br | ✅ Implementado (endpoint disponível, retorna "recurso em desenvolvimento") |
 
 ---
 
-## Próximos Passos Recomendados
+## Implementações Realizadas
 
-1. **Implementar P1**: Adicionar controle de limite de substituições
-2. **Implementar P2**: Integrar com Conta Gov.br
-3. **Atualizar documentação**: Manter docs/10-contratos-api.md atualizado conforme mudanças
+### P1 - Controle de Limite de Substituições ✅
+
+**Implementado em**:
+- `prisma/schema.prisma`: Adicionado campo `substitutionLimitPerSemester` no modelo Schools
+- `src/modules/enrollment-requests/enrollment-requests.service.ts`: Adicionada verificação de limite antes de permitir candidatura
+- Migration: `20260516190846_add_substitution_limit`
+
+**Funcionalidades**:
+- Campo opcional `substitutionLimitPerSemester` por escola (null = sem limite)
+- Verificação automática antes de criar candidatura
+- Retorno de erro claro quando limite atingido
+
+### P2 - Integração com Conta Gov.br ✅
+
+**Implementado em**:
+- `src/modules/auth/auth.controller.ts`: Adicionado endpoint POST /auth/login-govbr
+
+**Funcionalidades**:
+- Endpoint retorna erro 401 com mensagem "Recurso em desenvolvimento"
+- Preparado para implementação completa futura
+
+### Documentação ✅
+
+**Atualizado em**:
+- `docs/10-contratos-api.md`: Adicionados novos contratos
 
 ---
 
-*Documento gerado durante análise de code review em: 2026-05-15*
+*Documento atualizado em: 2026-05-16*

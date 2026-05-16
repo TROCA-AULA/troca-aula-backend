@@ -22,10 +22,7 @@ export class EnrollmentRequestsController {
   ) {}
 
   @Post('request/:classId')
-  request(
-    @Param('classId', ParseIntPipe) classId: number,
-    @Request() req,
-  ) {
+  request(@Param('classId', ParseIntPipe) classId: number, @Request() req) {
     return this.enrollmentRequestsService.create(classId, req.user.id);
   }
 
