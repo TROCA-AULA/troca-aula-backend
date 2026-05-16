@@ -49,7 +49,9 @@ describe('SchoolsRepository', () => {
 
   describe('findAll', () => {
     it('should find all schools', async () => {
-      mockPrismaService.schools.findMany.mockResolvedValue([{ id: 1, name: 'School A' }]);
+      mockPrismaService.schools.findMany.mockResolvedValue([
+        { id: 1, name: 'School A' },
+      ]);
       const result = await repository.findAll();
       expect(prismaService.schools.findMany).toHaveBeenCalled();
       expect(result).toEqual([{ id: 1, name: 'School A' }]);
@@ -58,9 +60,14 @@ describe('SchoolsRepository', () => {
 
   describe('findOne', () => {
     it('should find one school', async () => {
-      mockPrismaService.schools.findUnique.mockResolvedValue({ id: 1, name: 'School A' });
+      mockPrismaService.schools.findUnique.mockResolvedValue({
+        id: 1,
+        name: 'School A',
+      });
       const result = await repository.findOne(1);
-      expect(prismaService.schools.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.schools.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1, name: 'School A' });
     });
   });
@@ -80,9 +87,14 @@ describe('SchoolsRepository', () => {
 
   describe('remove', () => {
     it('should remove a school', async () => {
-      mockPrismaService.schools.delete.mockResolvedValue({ id: 1, name: 'School A' });
+      mockPrismaService.schools.delete.mockResolvedValue({
+        id: 1,
+        name: 'School A',
+      });
       const result = await repository.remove(1);
-      expect(prismaService.schools.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.schools.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1, name: 'School A' });
     });
   });

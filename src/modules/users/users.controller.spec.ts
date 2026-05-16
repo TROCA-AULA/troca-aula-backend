@@ -54,7 +54,9 @@ describe('UsersController', () => {
       expect(config.get).toHaveBeenCalledWith('saltRounds');
       expect(service.create).toHaveBeenCalled();
       // Verificamos que a senha enviada para o serviço é diferente da original (foi hasheada)
-      expect(mockUsersService.create.mock.calls[0][0].password).not.toBe('password123');
+      expect(mockUsersService.create.mock.calls[0][0].password).not.toBe(
+        'password123',
+      );
       expect(result).toEqual({ id: 1, email: dto.email });
     });
   });

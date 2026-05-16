@@ -30,6 +30,7 @@ model Users {
   email     String    @unique()
   phone     String
   password  String
+  subjectId Int?      // Matéria que o professor leciona
   createdAt DateTime  @default(now())
   deletedAt DateTime?
 
@@ -41,6 +42,10 @@ model Users {
   classRegistrar Classes[] @relation("classRegistrar")
 
   classApprover Classes[] @relation("classApprover")
+
+  enrolledClasses Classes[] @relation("enrolledClasses")
+
+  enrollmentRequests EnrollmentRequest[] @relation("enrollmentRequestProfessor")
 
   @@index([email])
 }
@@ -87,6 +92,21 @@ model UsersProfilesSchools {
   @@index([profileId])
 }
 
+model EnrollmentRequest {
+  id          Int       @id @default(autoincrement())
+  classId     Int
+  class       Classes   @relation("classEnrollmentRequests", fields: [classId], references: [id])
+  professorId Int
+  professor   Users     @relation("enrollmentRequestProfessor", fields: [professorId], references: [id])
+  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([classId])
+  @@index([professorId])
+  @@index([status])
+}
+
 model Classes {
   id Int @id @default(autoincrement())
 
@@ -106,10 +126,21 @@ model Classes {
   profile   Profiles? @relation("classProfile", fields: [profileId], references: [id])
   profileId Int?
 
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime @default(now())
   finishedAt DateTime?
   deletedAt  DateTime?
 
   statededAt DateTime?
   approvedAt DateTime?
+
+  dayOfWeek  Int?      // 1-7 (1=segunda, 7=domingo)
+  startTime  String?   // HH:MM
+  endTime    String?   // HH:MM
+
+  enrolledBy Users?    @relation("enrolledClasses", fields: [enrolledById], references: [id])
+  enrolledById Int?
+
+  available Boolean @default(true)
+
+  enrollmentRequests EnrollmentRequest[] @relation("classEnrollmentRequests")
 }

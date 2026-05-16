@@ -45,7 +45,9 @@ describe('SchoolsController', () => {
 
   describe('findAll', () => {
     it('should call service.findAll', async () => {
-      mockSchoolsService.findAll.mockResolvedValue([{ id: 1, name: 'School A' }]);
+      mockSchoolsService.findAll.mockResolvedValue([
+        { id: 1, name: 'School A' },
+      ]);
       const result = await controller.findAll();
       expect(service.findAll).toHaveBeenCalled();
       expect(result).toEqual([{ id: 1, name: 'School A' }]);

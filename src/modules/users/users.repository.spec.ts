@@ -46,8 +46,13 @@ describe('UsersRepository', () => {
         schoolId: 1,
         profileId: 2,
       };
-      mockPrismaService.users.create.mockResolvedValue({ id: 10, email: dto.email });
-      mockPrismaService.usersProfilesSchools.create.mockResolvedValue({ id: 1 });
+      mockPrismaService.users.create.mockResolvedValue({
+        id: 10,
+        email: dto.email,
+      });
+      mockPrismaService.usersProfilesSchools.create.mockResolvedValue({
+        id: 1,
+      });
 
       const result = await repository.create(dto as any);
 
@@ -80,7 +85,10 @@ describe('UsersRepository', () => {
 
   describe('findOneBy', () => {
     it('should find one user by email', async () => {
-      mockPrismaService.users.findUnique.mockResolvedValue({ id: 1, email: 'test@test.com' });
+      mockPrismaService.users.findUnique.mockResolvedValue({
+        id: 1,
+        email: 'test@test.com',
+      });
       const result = await repository.findOneBy('test@test.com');
       expect(prismaService.users.findUnique).toHaveBeenCalledWith({
         where: { email: 'test@test.com' },
@@ -104,7 +112,9 @@ describe('UsersRepository', () => {
     it('should remove a user', async () => {
       mockPrismaService.users.delete.mockResolvedValue({ id: 1 });
       const result = await repository.remove(1);
-      expect(prismaService.users.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.users.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1 });
     });
   });

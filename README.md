@@ -24,7 +24,36 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend do sistema **Troca Aula** - plataforma para gerenciamento e facilitação de substituição de professores, evitando aulas vagas.
+
+### Funcionalidades
+
+- **Autenticação**: JWT com bcrypt
+- **CRUD**: Users, Schools, Subjects, Classes, Profiles
+- **Troca de Aulas**: Sistema de solicitações de troca entre professores
+- **Inscrição**: Professores podem se increver/desinscrever de aulas
+
+### Tecnologias
+
+- NestJS + TypeScript
+- Prisma ORM
+- PostgreSQL
+- Docker
+
+## Documentação
+
+Consulte a documentação completa na pasta `docs/`:
+
+| Arquivo | Descrição |
+|---------|-----------|
+| [docs/01-visao-geral.md](docs/01-visao-geral.md) | Visão geral, propósito e objetivos do projeto |
+| [docs/02-arquitetura-backend.md](docs/02-arquitetura-backend.md) | Arquitetura do backend, padrões e estruturas |
+| [docs/03-endpoints.md](docs/03-endpoints.md) | Detalhamento completo de todos os endpoints |
+| [docs/04-regras-negocio.md](docs/04-regras-negocio.md) | Regras de negócio e validações do sistema |
+| [docs/05-user-stories.md](docs/05-user-stories.md) | User stories com cenários de aceitação |
+| [docs/06-modelo-dados.md](docs/06-modelo-dados.md) | Modelo de dados e schema do banco |
+| [docs/07-fluxos-negocio.md](docs/07-fluxos-negocio.md) | Fluxos de negócio com diagramas Mermaid |
+| [docs/08-fluxo-banco.md](docs/08-fluxo-banco.md) | Fluxo de dados no banco de dados |
 
 ## Project setup
 
@@ -44,6 +73,51 @@ $ pnpm run start:dev
 # production mode
 $ pnpm run start:prod
 ```
+
+## API Endpoints
+
+### Autenticação
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /auth/login | Login com email e senha |
+
+### Swap Requests (Troca de Aulas)
+
+Requer autenticação JWT (`Authorization: Bearer <token>`)
+
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|-----------|--------------|
+| POST | /swap-requests | Criar solicitação de troca | Apenas DIRETOR ou AUXILIAR_ADMIN |
+| GET | /swap-requests | Listar solicitações | Autenticado |
+| GET | /swap-requests/:id | Detalhar solicitação | Autenticado |
+| PATCH | /swap-requests/:id/accept | Aceitar solicitação | Apenas professor da mesma matéria |
+| PATCH | /swap-requests/:id/reject | Rejeitar solicitação | Apenas professor da mesma matéria |
+| PATCH | /swap-requests/:id/cancel | Cancelar solicitação | Apenas criador (se PENDING) |
+
+**Query Params (GET /swap-requests)**:
+- `status`: PENDING, APPROVED, REJECTED, CANCELLED
+- `type`: "created" (criadas por mim) | "received" (recebidas para mim)
+
+### Classes (Aulas)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /classes/:id/enroll | Inscrever-se na aula |
+| DELETE | /classes/:id/enroll | Cancelar inscrição |
+
+### Schools (Escolas)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /schools | Listar escolas |
+| POST | /schools | Criar escola |
+
+### Regras de Negócio
+
+1. **Criar SwapRequest**: Apenas usuário com perfil DIRETOR ou AUXILIAR_ADMIN
+2. **Aceitar Swap**: Apenas professor da mesma matéria da aula
+3. **Conflito de horário**: Mesmo dia + horário sobreposto = conflito
 
 ## Run tests
 

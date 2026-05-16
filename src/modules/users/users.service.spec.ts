@@ -64,7 +64,10 @@ describe('UsersService', () => {
 
   describe('findOneBy', () => {
     it('should call repository.findOneBy', async () => {
-      mockRepository.findOneBy.mockResolvedValue({ id: 1, email: 'test@test.com' });
+      mockRepository.findOneBy.mockResolvedValue({
+        id: 1,
+        email: 'test@test.com',
+      });
       const result = await service.findOneBy('test@test.com');
       expect(repository.findOneBy).toHaveBeenCalledWith('test@test.com');
       expect(result).toEqual({ id: 1, email: 'test@test.com' });

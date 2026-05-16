@@ -57,7 +57,11 @@ describe('AuthService', () => {
 
   describe('signIn', () => {
     it('should return an access token for valid credentials', async () => {
-      const user = { id: 1, email: 'test@test.com', password: 'hashed_password' };
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_password',
+      };
       mockUsersService.findOneBy.mockResolvedValue(user);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       mockJwtService.signAsync.mockResolvedValue('token');
@@ -65,7 +69,10 @@ describe('AuthService', () => {
       const result = await service.signIn('test@test.com', 'password123');
 
       expect(usersService.findOneBy).toHaveBeenCalledWith('test@test.com');
-      expect(bcrypt.compare).toHaveBeenCalledWith('password123', 'hashed_password');
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'password123',
+        'hashed_password',
+      );
       expect(jwtService.signAsync).toHaveBeenCalled();
       expect(result).toEqual({ access_token: 'token' });
     });
@@ -73,15 +80,23 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException if user not found', async () => {
       mockUsersService.findOneBy.mockResolvedValue(null);
 
-      await expect(service.signIn('test@test.com', 'password123')).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.signIn('test@test.com', 'password123'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw UnauthorizedException if password does not match', async () => {
-      const user = { id: 1, email: 'test@test.com', password: 'hashed_password' };
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_password',
+      };
       mockUsersService.findOneBy.mockResolvedValue(user);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
-      await expect(service.signIn('test@test.com', 'password123')).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.signIn('test@test.com', 'password123'),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 });

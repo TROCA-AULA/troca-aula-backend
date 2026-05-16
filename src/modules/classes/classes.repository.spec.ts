@@ -75,7 +75,9 @@ describe('ClassesRepository', () => {
     it('should find one class', async () => {
       mockPrismaService.classes.findUnique.mockResolvedValue({ id: 1 });
       const result = await repository.findOne(1);
-      expect(prismaService.classes.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.classes.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1 });
     });
   });
@@ -83,13 +85,20 @@ describe('ClassesRepository', () => {
   describe('update', () => {
     it('should update a class with approvedById', async () => {
       const dto = { approvedById: 2 };
-      mockPrismaService.classes.findUnique.mockResolvedValue({ id: 1, schoolId: 10 });
-      mockPrismaService.usersProfilesSchools.findMany.mockResolvedValue([{ profileId: 5 }]);
+      mockPrismaService.classes.findUnique.mockResolvedValue({
+        id: 1,
+        schoolId: 10,
+      });
+      mockPrismaService.usersProfilesSchools.findMany.mockResolvedValue([
+        { profileId: 5 },
+      ]);
       mockPrismaService.classes.update.mockResolvedValue({ id: 1 });
 
       const result = await repository.update(1, dto as any);
 
-      expect(prismaService.classes.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.classes.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(prismaService.usersProfilesSchools.findMany).toHaveBeenCalled();
       expect(prismaService.classes.update).toHaveBeenCalled();
       expect(result).toEqual({ id: 1 });
@@ -110,7 +119,9 @@ describe('ClassesRepository', () => {
     it('should remove a class', async () => {
       mockPrismaService.classes.delete.mockResolvedValue({ id: 1 });
       const result = await repository.remove(1);
-      expect(prismaService.classes.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(prismaService.classes.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
       expect(result).toEqual({ id: 1 });
     });
   });
