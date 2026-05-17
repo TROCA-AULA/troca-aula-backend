@@ -30,10 +30,16 @@ Seguir convenções REST básicas:
 - Proteger rotas sensíveis com guards
 
 ### V. Git Workflow
-- Conventional Commits para mensagens
+- Conventional Commits para mensagens (padrão commitlint)
+- Commits validados automaticamente pelo commitlint (husky pre-commit)
 - Feature branches para novas funcionalidades
 - PRs com descrição clara antes de merge
 - Não commitar secrets (usar .env.example)
+
+### VI. Package Manager & Node Version
+- **Gerenciador de pacotes**: pnpm (obrigatório)
+- **Versão do Node**: Gerenciada via nvm (.nvmrc na raiz do projeto)
+-Sempre usar `pnpm install`, `pnpm add`, `pnpm remove`
 
 ## Technology Stack
 
@@ -133,9 +139,11 @@ Padrão: conventional-commits
 - Versão segue semantic versioning (MAJOR.MINOR.PATCH)
 
 **Padrões de Qualidade**:
-- Lint passando (pnpm lint)
-- Testes passando (pnpm test)
-- Build funcionando (pnpm build)
+- Lint passando (`pnpm lint`)
+- Testes passando (`pnpm test`)
+- Build funcionando (`pnpm build`)
+- Commits passando no commitlint (`pnpm commit`)
 - Sem console.log em código de produção
+- Usar sempre pnpm (nunca npm ou yarn)
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-14 | **Last Amended**: 2026-05-14
+**Version**: 1.0.0 | **Ratified**: 2026-05-14 | **Last Amended**: 2026-05-16
