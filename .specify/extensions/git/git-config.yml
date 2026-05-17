@@ -5,13 +5,16 @@
 branch_numbering: sequential
 
 # Commit message used by `git commit` during repository initialization
-init_commit_message: "[Spec Kit] Initial commit"
+init_commit_message: "chore: initial commit"
 
 # Auto-commit before/after core commands.
 # Set "default" to enable for all commands, then override per-command.
 # Each key can be true/false. Message is customizable per-command.
 auto_commit:
   default: true
+  before_specify:
+    enabled: true
+    message: "chore: create branch before specification"
   before_clarify:
     enabled: false
     message: "[Spec Kit] Save progress before clarification"
@@ -37,20 +40,20 @@ auto_commit:
     enabled: false
     message: "[Spec Kit] Add project constitution"
   after_specify:
-    enabled: false
-    message: "[Spec Kit] Add specification"
+    enabled: true
+    message: "chore: add specification"
   after_clarify:
     enabled: false
     message: "[Spec Kit] Clarify specification"
   after_plan:
-    enabled: false
-    message: "[Spec Kit] Add implementation plan"
+    enabled: true
+    message: "chore: add implementation plan"
   after_tasks:
     enabled: false
     message: "[Spec Kit] Add tasks"
   after_implement:
-    enabled: false
-    message: "[Spec Kit] Implementation progress"
+    enabled: true
+    message: "chore: implementation progress"
   after_checklist:
     enabled: false
     message: "[Spec Kit] Add checklist"
