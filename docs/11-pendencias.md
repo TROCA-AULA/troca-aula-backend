@@ -6,42 +6,26 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 
 ## Pendências Identificadas
 
-### P1 — Controle de Limite de Substituições (Teto)
+### Backend - Funcionalidades Implementadas
 
-**Prioridade**: ALTA
-
-**Descrição**: O sistema deve controlar automaticamente o número máximo de substituições que cada professor pode fazer por período (semestre/ano). Quando o professor atinge o limite, novas candidaturas devem ser bloqueadas automaticamente.
-
-**Status atual**: Não implementado
-
-**Local esperado**: `src/modules/enrollment-requests/enrollment-requests.service.ts`
-
-**Funcionalidades esperadas**:
-- Contador de substituições por professor
-- Configuração de limite por escola
-- Bloqueio automático quando limite atingido
-- Alerta quando próximo do limite
-
-**Impacto**: Sem esta funcionalidade, não há controle sobre sobrecarga de trabalho dos professores, descumprindo regra de negócio documentada.
+| Item | Status | Observação |
+|------|--------|------------|
+| P1 - Controle de Limite de Substituições | ✅ Implementado | Campo `substitutionLimitPerSemester` em Schools |
+| P2 - Integração Gov.br | ✅ Stub implementado | Endpoint retorna "recurso em desenvolvimento" |
 
 ---
 
-### P2 — Integração com Conta Gov.br
+## Para Desenvolvimento do Frontend
 
-**Prioridade**: ALTA
+**Consulte o prompt completo em**: `docs/prompt.front.md`
 
-**Descrição**: O sistema deve utilizar a Conta Gov.br para autenticação, conforme documentado no projeto acadêmico. Atualmente, o sistema usa autenticação JWT tradicional com email/senha.
-
-**Status atual**: Não implementado (usa JWT + bcrypt)
-
-**Local esperado**: `src/modules/auth/`
-
-**Funcionalidades esperadas**:
-- Integração com API Gov.br para validação de identidade
-- Substituição do login por email/senha pelo login governamental
-- Validação de CPF institucional
-
-**Impacto**: A autenticação atual não está alinhada com o especificado no documento base.MD e não oferece o mesmo nível de segurança que a Conta Gov.br.
+Esse documento contém:
+- Visão geral do projeto
+- Stack técnico do backend
+- Todos os contratos de API disponíveis
+- Headers necessários
+- Response format padrão
+- Tarefa: criar/atualizar pendências do frontend
 
 ---
 
@@ -126,45 +110,23 @@ async loginGovBr(@Body() body: { token: string }) {
 
 ---
 
-## Status Geral
+## Status Geral (Backend)
 
 | Item | Status |
 |------|--------|
-| Módulos principais implementados | ✅ Completo |
-| Endpoints CRUD funcionando | ✅ Completo |
+| Módulos principais | ✅ Completo |
+| Endpoints CRUD | ✅ Completo |
 | Sistema de candidaturas | ✅ Completo |
 | Controle de limite de substituições | ✅ Implementado |
-| Integração Gov.br | ✅ Implementado (endpoint disponível, retorna "recurso em desenvolvimento") |
+| Integração Gov.br | ✅ Stub implementado |
+| Documentação API | ✅ Atualizada |
 
 ---
 
-## Implementações Realizadas
+## Próximos Passos
 
-### P1 - Controle de Limite de Substituições ✅
-
-**Implementado em**:
-- `prisma/schema.prisma`: Adicionado campo `substitutionLimitPerSemester` no modelo Schools
-- `src/modules/enrollment-requests/enrollment-requests.service.ts`: Adicionada verificação de limite antes de permitir candidatura
-- Migration: `20260516190846_add_substitution_limit`
-
-**Funcionalidades**:
-- Campo opcional `substitutionLimitPerSemester` por escola (null = sem limite)
-- Verificação automática antes de criar candidatura
-- Retorno de erro claro quando limite atingido
-
-### P2 - Integração com Conta Gov.br ✅
-
-**Implementado em**:
-- `src/modules/auth/auth.controller.ts`: Adicionado endpoint POST /auth/login-govbr
-
-**Funcionalidades**:
-- Endpoint retorna erro 401 com mensagem "Recurso em desenvolvimento"
-- Preparado para implementação completa futura
-
-### Documentação ✅
-
-**Atualizado em**:
-- `docs/10-contratos-api.md`: Adicionados novos contratos
+1. Execute o que está em `docs/prompt.front.md` para identificar pendências do frontend
+2. Atualize este arquivo com as pendências encontradas
 
 ---
 
