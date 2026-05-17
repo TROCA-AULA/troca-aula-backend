@@ -9,13 +9,15 @@ export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-    const { schoolId, profileId, ...userPayload } = createUserDto;
-    const user = await this.prisma.users.create({
+    return this.prisma.users.create({
       data: {
-        ...userPayload,
+        ...createUserDto,
       } as Prisma.UsersCreateInput,
     });
-    await this.prisma.usersProfilesSchools.create({
+  }
+
+  async assignProfile(userId: number, profileId: number, schoolId: number) {
+    return this.prisma.usersProfilesSchools.create({
       data: {
         school: {
           connect: {
@@ -24,7 +26,7 @@ export class UsersRepository {
         },
         user: {
           connect: {
-            id: user.id,
+            id: userId,
           },
         },
         profile: {
@@ -34,7 +36,6 @@ export class UsersRepository {
         },
       } as Prisma.UsersProfilesSchoolsCreateInput,
     });
-    return user;
   }
 
   findAll() {

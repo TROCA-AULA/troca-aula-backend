@@ -1,23 +1,7 @@
-import { ProfileEnum } from '../../profile/profile.enum';
-import { IsEnum, IsNotEmpty, IsNumber, IsString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString, IsInt } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
-  @ApiProperty()
-  @IsNotEmpty()
-  @IsEnum(ProfileEnum, {
-    message:
-      'Perfil deve ser um valor entre 1 e 3 (DIRETOR, AUXILIAR_ADM ou PROFESSOR)',
-  })
-  @Type(() => Number)
-  profileId: ProfileEnum;
-
-  @ApiProperty()
-  @IsNotEmpty()
-  @IsNumber()
-  schoolId: number;
-
   @ApiProperty()
   @IsNotEmpty()
   @IsString()
@@ -37,4 +21,9 @@ export class CreateUserDto {
   @IsNotEmpty()
   @IsString()
   password: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  subjectId?: number;
 }

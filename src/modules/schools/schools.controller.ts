@@ -6,12 +6,15 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { SchoolsService } from './schools.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
+import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('schools')
+@UseGuards(AuthGuard)
 export class SchoolsController {
   constructor(private readonly schoolsService: SchoolsService) {}
 

@@ -10,6 +10,10 @@ export class UsersService {
     return this.usersRepository.create(createUserDto);
   }
 
+  assignProfile(userId: number, profileId: number, schoolId: number) {
+    return this.usersRepository.assignProfile(userId, profileId, schoolId);
+  }
+
   findAll() {
     return this.usersRepository.findAll();
   }

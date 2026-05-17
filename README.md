@@ -54,6 +54,9 @@ Consulte a documentação completa na pasta `docs/`:
 | [docs/06-modelo-dados.md](docs/06-modelo-dados.md) | Modelo de dados e schema do banco |
 | [docs/07-fluxos-negocio.md](docs/07-fluxos-negocio.md) | Fluxos de negócio com diagramas Mermaid |
 | [docs/08-fluxo-banco.md](docs/08-fluxo-banco.md) | Fluxo de dados no banco de dados |
+| [docs/documentacao-central-troca-aula.md](docs/documentacao-central-troca-aula.md) | Documentação central combinando backend e frontend |
+| [docs/tutorial-teste-local-fluxos.md](docs/tutorial-teste-local-fluxos.md) | Tutorial passo a passo para testar localmente |
+| [docs/checklist-qa-fluxos-locais.md](docs/checklist-qa-fluxos-locais.md) | Checklist de validação por perfil e regras de negócio |
 
 ## Project setup
 
