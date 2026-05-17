@@ -32,17 +32,22 @@ describe('EnrollmentRequestsService', () => {
     findOne: jest.fn(),
   };
 
-  const mockPrisma = {
+const mockPrisma = {
     users: {
       findUnique: jest.fn(),
     },
     classes: {
       findUnique: jest.fn(),
+      findFirst: jest.fn().mockResolvedValue(null),
       update: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
     },
     enrollmentRequest: {
       findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    schools: {
+      findUnique: jest.fn().mockResolvedValue(null),
     },
   };
 
