@@ -1,8 +1,9 @@
 {
-  "version": "0.8.10.dev0",
+  "version": "0.8.11",
   "integration_state_schema": 1,
   "installed_integrations": [
-    "opencode"
+    "opencode",
+    "speckit"
   ],
   "integration_settings": {
     "opencode": {

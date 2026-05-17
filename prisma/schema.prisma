@@ -60,10 +60,11 @@ model Subjects {
 }
 
 model Schools {
-  id        Int       @id @default(autoincrement())
-  name      String
-  createdAt DateTime  @default(now())
-  deletedAt DateTime?
+  id                         Int       @id @default(autoincrement())
+  name                       String
+  substitutionLimitPerSemester Int?    // Limite de substituições por semestre (null = sem limite)
+  createdAt                  DateTime  @default(now())
+  deletedAt                  DateTime?
 
   upsSchool UsersProfilesSchools[] @relation("upsSchool")
 

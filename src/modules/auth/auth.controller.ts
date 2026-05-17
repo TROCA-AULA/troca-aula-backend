@@ -1,4 +1,11 @@
-import { Body, Controller, Post, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  HttpCode,
+  HttpStatus,
+  HttpException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -10,5 +17,14 @@ export class AuthController {
   @Post('login')
   signIn(@Body() signInDto: LoginDto) {
     return this.authService.signIn(signInDto.email, signInDto.password);
+  }
+
+  @HttpCode(HttpStatus.UNAUTHORIZED)
+  @Post('login-govbr')
+  loginGovBr() {
+    throw new HttpException(
+      'Recurso em desenvolvimento',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 }
