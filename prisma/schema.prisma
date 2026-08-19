@@ -31,6 +31,7 @@ model Users {
   phone     String
   password  String
   subjectId Int?      // Matéria que o professor leciona
+  substitutionLimitPerSemester Int?
   createdAt DateTime  @default(now())
   deletedAt DateTime?
 

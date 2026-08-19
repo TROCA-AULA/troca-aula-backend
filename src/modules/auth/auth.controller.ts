@@ -1,10 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   HttpCode,
   HttpStatus,
-  HttpException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -19,12 +19,23 @@ export class AuthController {
     return this.authService.signIn(signInDto.email, signInDto.password);
   }
 
+  @Get('govbr-auth-url')
+  @HttpCode(HttpStatus.NOT_IMPLEMENTED)
+  govbrAuthUrl() {
+    return {
+      data: null,
+      message: 'Integracao Gov.br em desenvolvimento',
+      statusCode: HttpStatus.NOT_IMPLEMENTED,
+    };
+  }
+
   @HttpCode(HttpStatus.UNAUTHORIZED)
   @Post('login-govbr')
   loginGovBr() {
-    throw new HttpException(
-      'Recurso em desenvolvimento',
-      HttpStatus.UNAUTHORIZED,
-    );
+    return {
+      data: null,
+      message: 'Recurso em desenvolvimento',
+      statusCode: HttpStatus.UNAUTHORIZED,
+    };
   }
 }

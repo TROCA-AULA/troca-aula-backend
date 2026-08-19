@@ -19,6 +19,16 @@ export class EnrollmentRequestsService {
     private readonly prisma: PrismaService,
   ) {}
 
+  private getPrimaryRoleName(userWithProfile: {
+    upsUser?: Array<{ profile?: { name?: string | null } }>;
+  }): string {
+    return userWithProfile?.upsUser?.[0]?.profile?.name ?? '';
+  }
+
+  private isManagerRole(roleName: string): boolean {
+    return ['MASTER', 'DIRETOR', 'AUXILIAR_ADMIN'].includes(roleName);
+  }
+
   async create(classId: number, professorId: number) {
     const classData = await this.classesRepository.findOne(classId);
     if (!classData) {
@@ -63,19 +73,15 @@ export class EnrollmentRequestsService {
       throw new BadRequestException('Conflito de horário detectado');
     }
 
-    const school = await this.prisma.schools.findUnique({
-      where: { id: classData.schoolId },
-    });
-
     if (
-      school &&
-      school.substitutionLimitPerSemester !== null &&
-      school.substitutionLimitPerSemester > 0
+      professor.substitutionLimitPerSemester !== null &&
+      professor.substitutionLimitPerSemester !== undefined &&
+      professor.substitutionLimitPerSemester > 0
     ) {
       const approvedCount = await this.countApprovedSubstitutions(professorId);
-      if (approvedCount >= school.substitutionLimitPerSemester) {
+      if (approvedCount >= professor.substitutionLimitPerSemester) {
         throw new BadRequestException(
-          `Limite de substituições atingido para este semestre (${school.substitutionLimitPerSemester} limite)`,
+          `Limite de substituições atingido para este semestre (${professor.substitutionLimitPerSemester} limite)`,
         );
       }
     }
@@ -152,9 +158,9 @@ export class EnrollmentRequestsService {
       },
     });
 
-    const isDirector =
-      userWithProfile?.upsUser?.[0]?.profile?.name === 'DIRETOR' ||
-      userWithProfile?.upsUser?.[0]?.profile?.name === 'AUXILIAR_ADMIN';
+    const roleName = this.getPrimaryRoleName(userWithProfile ?? {});
+    const isManager = this.isManagerRole(roleName);
+    const managerSchoolId = userWithProfile?.upsUser?.[0]?.schoolId;
 
     const where: any = {};
 
@@ -170,8 +176,35 @@ export class EnrollmentRequestsService {
       where.professorId = params.professorId;
     }
 
-    if (!isDirector) {
+    if (params.userId) {
+      where.professorId = params.userId;
+    }
+
+    if (params.createdAfter || params.createdBefore || params.mes) {
+      where.createdAt = {};
+      if (params.createdAfter) {
+        where.createdAt.gte = new Date(params.createdAfter);
+      }
+      if (params.createdBefore) {
+        where.createdAt.lte = new Date(params.createdBefore);
+      }
+      if (params.mes) {
+        const start = new Date(`${params.mes}-01T00:00:00.000Z`);
+        const end = new Date(start);
+        end.setUTCMonth(end.getUTCMonth() + 1);
+        where.createdAt.gte = start;
+        where.createdAt.lt = end;
+      }
+    }
+
+    if (params.schoolId) {
+      where.class = { schoolId: params.schoolId };
+    }
+
+    if (!isManager) {
       where.professorId = userId;
+    } else if (roleName !== 'MASTER' && managerSchoolId) {
+      where.class = { schoolId: managerSchoolId };
     }
 
     return this.repository.findAll({ where });
@@ -196,13 +229,18 @@ export class EnrollmentRequestsService {
       where: { id: directorId },
       include: {
         upsUser: {
-          include: { school: true },
+          include: { school: true, profile: true },
         },
       },
     });
 
     if (!director) {
       throw new NotFoundException('Diretor não encontrado');
+    }
+
+    const roleName = this.getPrimaryRoleName(director);
+    if (!this.isManagerRole(roleName)) {
+      throw new ForbiddenException('Apenas gestor pode aprovar solicitações');
     }
 
     const classData = await this.prisma.classes.findUnique({
@@ -215,7 +253,7 @@ export class EnrollmentRequestsService {
     }
 
     const directorSchoolId = director.upsUser[0]?.schoolId;
-    if (directorSchoolId !== classData.schoolId) {
+    if (roleName !== 'MASTER' && directorSchoolId !== classData.schoolId) {
       throw new ForbiddenException(
         'Você só pode aprovar solicitações de aulas da sua escola',
       );
@@ -243,13 +281,18 @@ export class EnrollmentRequestsService {
       where: { id: directorId },
       include: {
         upsUser: {
-          include: { school: true },
+          include: { school: true, profile: true },
         },
       },
     });
 
     if (!director) {
       throw new NotFoundException('Diretor não encontrado');
+    }
+
+    const roleName = this.getPrimaryRoleName(director);
+    if (!this.isManagerRole(roleName)) {
+      throw new ForbiddenException('Apenas gestor pode rejeitar solicitações');
     }
 
     const classData = await this.prisma.classes.findUnique({
@@ -262,7 +305,7 @@ export class EnrollmentRequestsService {
     }
 
     const directorSchoolId = director.upsUser[0]?.schoolId;
-    if (directorSchoolId !== classData.schoolId) {
+    if (roleName !== 'MASTER' && directorSchoolId !== classData.schoolId) {
       throw new ForbiddenException(
         'Você só pode rejeitar solicitações de aulas da sua escola',
       );
