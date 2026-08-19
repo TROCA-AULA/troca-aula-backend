@@ -387,7 +387,7 @@ A criacao de aulas vagas permite que professores ou agentes administrativos cada
 
 A busca e candidatura de professores e outra funcao importante. Professores que desejam realizar substituicoes podem acessar o sistema a qualquer momento para visualizar todas as aulas vagas disponiveis na sua instituicao. O sistema oferece filtros por disciplina, dia, horario e outros criterios, facilitando a busca por oportunidades que se encaixem na disponibilidade de cada profissional. A candidatura e registrada automaticamente no sistema.
 
-O controle automatico de limite de substituicoes garante que cada professor respeite o teto maximo de aulas que pode substituir por periodo, definido pelas normas da instituicao. O sistema monitora esse limite em tempo real e bloqueia novas candidaturas quando o limite e atingido, alem de emitir alertas preventivos quando o professor esta proximo de atingir o maximo permitido.
+O controle automatico de limite de substituicoes garante que cada professor respeite o teto maximo de horas que pode substituir por dia, definido pelas normas da instituicao. O sistema monitora esse limite em tempo real e bloqueia novas candidaturas quando o limite e atingido, alem de emitir alertas preventivos quando o professor esta proximo de atingir o maximo permitido.
 
 A aprovacao de candidaturas e uma funcao destinada ao corpo diretivo. Nem toda candidatura e automaticamente aceita; os diretores precisam validar cada substituicao para garantir que apenas profissionais habilitados sejam aprovados. O sistema oferece um painel especifico para essa funcao, permitindo visualizacao das candidaturas pendentes e decisao de aprovacao ou rejeicao.
 
@@ -485,7 +485,7 @@ A visualizacao e busca de vagas e uma funcao diseñada para facilitar a vida dos
 
 A candidatura a vagas e o ato pelo qual um professor manifesta interesse em realizar uma substituicao especifica. Ao candidatar-se, o professor indica que esta disponivel e qualificado para ocupar aquela vaga. O sistema registra automaticamente essa candidatura e notifica os responsables sobre a nova solicitacao, iniciando o processo de avaliacao.
 
-O controle de limite de substituicoes e uma funcionalidade essencial para garantir que nenhum professor seja sobrecarregado com excesso de trabalho. Cada instituicao define um teto maximo de aulas que um professor pode substituir em um determinado periodo, seja por semestre ou por ano. O sistema monitora esse limite automaticamente, impedindo novas candidaturas quando o teto e atingido e emitindo alertas quando o professor esta proximo do limite.
+O controle de limite de substituicoes e uma funcionalidade essencial para garantir que nenhum professor seja sobrecarregado com excesso de trabalho. Cada instituicao define um teto maximo de horas que um professor pode substituir por dia. O sistema monitora esse limite automaticamente, impedindo novas candidaturas quando o teto e atingido e emitindo alertas quando o professor esta proximo do limite.
 
 A aprovacao de candidaturas e o momento em que o corpo diretivo valida ou rejeita cada solicitacao de substituicao. Esta etapa e fundamental para garantir que apenas profissionais devidamente habilitados e qualificados sejam aprovados para cada disciplina. O sistema apresenta ao diretor todas as informações relevantes sobre o candidato, incluindo sua formacao academica e historico de substituicoes anteriores.
 
@@ -511,7 +511,7 @@ Todo esse processo, que antes poderia levar horas ou ate dias de trabalho manual
 
 Compreender quem sao os usuarios do sistema e fundamental para garantir que a plataforma atenda as suas necessidades reais. Para isso, desenvolvemos tres personas detalhadas que representam os principais perfis de usuarios.
 
-O professor substituto representa o profissional que busca oportunidades de aulas extras dentro da instituicao. Este professor geralmente trabalha em tempo parcial ou deseja complementar sua renda, e utiliza o sistema principalmente pelo celular, acessando durante o intervalo das aulas ou a noite em casa. Suas principais necessidades incluem encontrar vagas rapidamente, filtrar por disciplinas que ensina, acompanhar quantas substituicoes ja realizou e verificar quanto ainda pode fazer dentro do limite permitido. Suas frustracoes com metodos antigos incluíam nao saber quando haviam vagas disponiveis, aceitar aulas sem detalhes completos e nao ter registro claro das substituicoes realizadas.
+O professor substituto representa o profissional que busca oportunidades de aulas extras dentro da instituicao. Este professor geralmente trabalha em tempo parcial ou deseja complementar sua renda, e utiliza o sistema principalmente pelo celular, acessando durante o intervalo das aulas ou a noite em casa. Suas principais necessidades incluem encontrar vagas rapidamente, filtrar por disciplinas que ensina, acompanhar quantas horas de substituicoes ja realizou no dia e verificar quanto ainda pode fazer dentro do limite diario permitido. Suas frustracoes com metodos antigos incluíam nao saber quando haviam vagas disponiveis, aceitar aulas sem detalhes completos e nao ter registro claro das substituicoes realizadas.
 
 A agente administrativa representa a profissional que coordena toda a parte operacional das substituicoes na escola. Geralmente trabalha na secretaría ha varios anos e esta acostumada com a rotina de organizar as ausencias dos professores. Acessa o sistema diariamente pelo computador, geralmente no inicio da manha, para verificar as aulas vagas do dia. Precisa de uma visao clara e organizada de todas as ausencias, capacidade de cadastrar novas ausencias rapidamente, editar ou cancelar registros quando necessario e verificar se os professores candidatos estao habilitados para as disciplinas. Sua maior frustracao era o tempo desperdicado com ligacoes telefonicas, planilhas e cadernos, alem do risco de erros e esquecimentos.
 
@@ -525,7 +525,7 @@ Uma aula vaga e uma aula que ficou sem professor porque o titular precisa se aus
 
 Uma candidatura e o ato de um professor se voluntariar para preencher uma aula vaga. E semelhante a se candidatar a um emprego, mas para uma substituicao temporaria.
 
-O teto de substituicoes e o numero maximo de aulas que um professor pode substituir em um determinado periodo, definido pelas normas da escola para evitar sobrecarga de trabalho.
+O teto de substituicoes e o numero maximo de horas que um professor pode substituir por dia, definido pelas normas da escola para evitar sobrecarga de trabalho.
 
 A aprovacao e o ato do diretor validar e confirmar que uma substituicao pode ocorrer. Sem aprovacao, a substituicao nao e oficialmente registrada.
 
@@ -675,7 +675,7 @@ Aula vaga representa uma aula que ficou sem professor porque o candidato titular
 
 Candidatura representa o ato de um professor se voluntaria para preencher uma aula vaga. Este processo envolve o professor manifestando interesse e passando por verificacoes automaticas de habilitacao antes de ter sua solicitacao enviada para aprovacao do diretor.
 
-Teto de substituicoes representa o limite maximo de aulas que um professor pode substituir em um determinado periodo. Este limite e definido pelas normas da instituicao para evitar sobrecarga de trabalho e garantir que os professores nao se dediquem exclusivamente a substituicoes em detrimento de suas propriasturmas.
+Teto de substituicoes representa o limite maximo de horas que um professor pode substituir por dia. Este limite e definido pelas normas da instituicao para evitar sobrecarga de trabalho e garantir que os professores nao se dediquem exclusivamente a substituicoes em detrimento de suas proprias turmas.
 
 Aprovacao representa o ato do diretor validar e confirmar que uma substituicao pode ocorrer. Esta etapa e obrigatoria para que a substituicao seja considerada oficial, garantindo que apenas profissionais qualificados sejam designados as aulas.
 
@@ -847,7 +847,7 @@ O sistema exibe informacoes sobre o numero de substituicoes realizadas e o limit
 
 ### Minha escola pode personalizar as regras do sistema?
 
-Sim, algumas funcionalidades permitem customizacao, como o limite de substituicoes por periodo e os requisitos de habilitacao para cada disciplina. Essas configuracoes sao definidas pela administracao da escola.
+Sim, algumas funcionalidades permitem customizacao, como o limite de horas de substituicoes por dia e os requisitos de habilitacao para cada disciplina. Essas configuracoes sao definidas pela administracao da escola.
 
 ---
 

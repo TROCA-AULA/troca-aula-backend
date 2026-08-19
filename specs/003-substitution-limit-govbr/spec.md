@@ -12,7 +12,7 @@
 
 ### User Story 1 - Controle de Limite de Substituições (Priority: P1)
 
-Professor deve ter limite de substituições por semestre controlado automaticamente pelo sistema.
+Professor deve ter limite de substituições por dia (em horas) controlado automaticamente pelo sistema.
 
 **Why this priority**: Sem esta funcionalidade, não há controle sobre sobrecarga de trabalho dos professores, descumprindo regra de negócio documentada.
 
@@ -20,8 +20,8 @@ Professor deve ter limite de substituições por semestre controlado automaticam
 
 **Acceptance Scenarios**:
 
-1. **Given** Escola com limite de 10 substituições/semestre, **When** Professor tenta se candidatar à 11ª aula, **Then** Sistema bloqueia com mensagem "Limite de substituições atingido para este semestre"
-2. **Given** Escola com limite de 10 substituições/semestre, **When** Professor tenta se candidatar à 5ª aula (abaixo do limite), **Then** Sistema permite a candidatura normalmente
+1. **Given** Escola com limite de 4 horas/dia, **When** Professor tenta se candidatar a uma aula de 2 horas quando já tem 3 horas, **Then** Sistema bloqueia com mensagem "Limite de substituições atingido para hoje"
+2. **Given** Escola com limite de 4 horas/dia, **When** Professor tenta se candidatar a uma aula de 1 hora quando tem 2 horas, **Then** Sistema permite a candidatura normalmente
 3. **Given** Escola sem limite configurado, **When** Professor tenta se candidatar, **Then** Sistema permite normalmente (sem restrição de limite)
 
 ---
@@ -59,8 +59,8 @@ Documentação de contratos de API deve refletir as mudanças implementadas.
 
 ### Functional Requirements
 
-- **FR-001**: Sistema DEVE adicionar campo `substitutionLimitPerSemester` na entidade Schools para configurar limite de substituições por escola
-- **FR-002**: Sistema DEVE verificar se professor atingiu o limite antes de permitir nova candidatura
+- **FR-001**: Sistema DEVE adicionar campo `substitutionLimitPerDay` na entidade Schools para configurar limite de horas de substituições por dia por escola
+- **FR-002**: Sistema DEVE verificar se professor atingiu o limite de horas do dia antes de permitir nova candidatura
 - **FR-003**: Sistema DEVE bloquear automaticamente candidaturas quando limite atingido
 - **FR-004**: Sistema DEVE permitir que limite zero (0) signifique sem limite de substituições
 - **FR-005**: Sistema DEVE adicionar endpoint POST /auth/login-govbr para autenticação via Gov.br
@@ -69,8 +69,8 @@ Documentação de contratos de API deve refletir as mudanças implementadas.
 
 ### Key Entities
 
-- **Schools**: Adicionar atributo `substitutionLimitPerSemester` (número inteiro, opcional)
-- **EnrollmentRequest**: Manter relação existente com professor para contagem de substituições aprovadas
+- **Schools**: Adicionar atributo `substitutionLimitPerDay` (número inteiro, opcional) para limite de horas por dia
+- **EnrollmentRequest**: Manter relação existente com professor para contagem de horas de substituições aprovadas
 
 ## Success Criteria *(mandatory)*
 
@@ -83,7 +83,8 @@ Documentação de contratos de API deve refletir as mudanças implementadas.
 
 ## Assumptions
 
-- Limite é considerado por semestre letivo atual
+- Limite é considerado por dia (contagem zera a cada novo dia)
 - Contagem considera apenas substituições APROVADAS (não pendentes ou rejeitadas)
+- O limite é calculado em horas (soma das horas das aulas substituídas no dia)
 - Integração Gov.br será implementada formalmente em fase posterior
 - Configuração de limite pode ser atualizada pelo diretor da escola

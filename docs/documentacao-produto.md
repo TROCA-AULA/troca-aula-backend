@@ -109,7 +109,7 @@ Uma vez encontrada uma vaga interessante, o professor pode se candidatar fills-a
 
 ### Controle de Limite de Substituições
 
-Uma funcionalidade importante do sistema é o controle automático do teto de substituições. Cada professor tem um limite máximo de aulas que pode substituir por período, definido pelas normas da instituição. O sistema monitora automaticamente esse limite e impede que um professor se candidate a novas vagas quando já atingiu seu limite. Se um professor está próximo de atingir o limite, o sistema emite alertas preventivos para que todos fiquem cientes da situação.
+Uma funcionalidade importante do sistema é o controle automático do teto de substituições. Cada professor tem um limite máximo de horas que pode substituir por dia, definido pelas normas da instituição. O sistema monitora automaticamente esse limite e impede que um professor se candidate a novas vagas quando já atingiu seu limite. Se um professor está próximo de atingir o limite, o sistema emite alertas preventivos para que todos fiquem cientes da situação.
 
 ### Aprovação de Candidaturas
 
@@ -186,7 +186,7 @@ Para desenvolver um produto que atenda às reais necessidades dos usuários, é 
 
 O professor Carlos tem 34 anos, é formados em Letras pela UNESP e leciona há 8 anos em escolas públicas. Ele trabalha em duas escolas e sempre está buscando oportunidades de aumentar sua renda. Quando soube do sistema, viu nele uma forma organizada de encontrar aulas extras sem precisar ficar perguntando em várias escolas.
 
-Carlos acessa o sistema principalmente pelo celular, durante o intervalo das aulas ou à noite em casa. Ele quer ver rapidamente quais vagas estão disponíveis, filtrar pelas disciplinas que ensina e candidatar-se com apenas alguns toques na tela. Ele gosta de acompanhar o histórico de suas substituições para saber quantas aulas já fez e quanto ainda pode fazer dentro do limite.
+Carlos acessa o sistema principalmente pelo celular, durante o intervalo das aulas ou à noite em casa. Ele quer ver rapidamente quais vagas estão disponíveis, filtrar pelas disciplinas que ensina e candidatar-se com apenas alguns toques na tela. Ele gosta de acompanhar o histórico de suas substituições para saber quantas horas já fez no dia e quanto ainda pode fazer dentro do limite diário.
 
 Suas frustrações com o sistema antigo incluíam: não saber quando havia vagas disponíveis, precisar aceitar aulas sem saber detalhes completos sobre elas e não ter um registro claro das substituições que havia feito. Com o novo sistema, ele consegue tudo isso de forma prática e organizada.
 
@@ -202,7 +202,7 @@ Sua maior frustração era o tempo necessário para fazer tudo manualmente: pree
 
 O diretor Roberto tem 48 anos, é formado em Pedagogia e Administração Escolar e atua como diretor há 6 anos. Ele é responsável pela governança geral da escola e precisa garantir que todas as substituições estejam dentro das normas institucionais e que a qualidade do ensino não seja comprometida por ausências não planejadas.
 
-Roberto acessa o sistema principalmente pelo computador, no início da manhã e no final do dia, para verificar as substituições pendientes e aprovar aquelas que estão dentro dos critérios. Ele precisa de relatórios claros sobre o número de substituições realizadas, quais professores estão делает mais substituições e se algum limite está sendo descumprido.
+Roberto acessa o sistema principalmente pelo computador, no início da manhã e no final do dia, para verificar as substituições pendientes e aprovar aquelas que estão dentro dos critérios. Ele precisa de relatórios claros sobre o número de substituições realizadas, quais professores estão fazendo mais substituições e se algum limite diário está sendo descumprido.
 
 Ele também precisa garantir que apenas professores habilitados sejam aprovados para cada disciplina, verificando se possuem a formação necessária e se estão cadastrados previamente no sistema. Sua visão estratégica permite analisar dados e tomar decisões sobre a política de substituições da escola.
 
@@ -218,7 +218,7 @@ Para facilitar o entendimento de todos os termos utilizados na documentação e 
 
 **Candidatura**: O ato de um professor se voluntariar para preencher uma aula vaga. É como se candidatar a um emprego, mas para uma substituição temporária de aula.
 
-**Teto de Substituições**: O número máximo de aulas que um professor pode substituir em um determinado período, definido pelas normas da escola para evitar sobrecarga.
+**Teto de Substituições**: O número máximo de horas que um professor pode substituir por dia, definido pelas normas da escola para evitar sobrecarga.
 
 **Aprovação**: O ato do diretor validar e confirmar que uma substituição pode ocorrer. Sem aprovação, a substituição não é oficialmente registrada.
 
@@ -256,7 +256,7 @@ Um professor só pode se candidatar a aulas de disciplinas para as quais está h
 
 ### Regra 3: Controle de Limite por Período
 
-O sistema controla automaticamente o número de substituições realizadas por cada professor. Quando o professor atinge o limite definido pela instituição, novas candidaturas são bloqueadas automaticamente. Alertas são enviados quando o professor está próximo do limite.
+O sistema controla automaticamente o número de horas de substituições realizadas por cada professor por dia. Quando o professor atinge o limite definido pela instituição, novas candidaturas são bloqueadas automaticamente. Alertas são enviados quando o professor está próximo do limite.
 
 ### Regra 4: Aprovação Obrigatória do Corpo Diretivo
 
