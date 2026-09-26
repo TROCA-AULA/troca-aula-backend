@@ -1,6 +1,9 @@
 // Script standalone para aplicar as migrations do Drizzle (`pnpm db:migrate`),
 // equivalente ao antigo `pnpm prisma migrate deploy`. Não é chamado pelo
-// NestJS em runtime — roda uma vez, fora do processo da aplicação.
+// NestJS em runtime — roda uma vez, fora do processo da aplicação, por isso
+// precisa carregar o `.env` sozinho (o `ConfigModule`/dotenv do Nest só
+// entra em ação quando a aplicação sobe via `main.ts`).
+import 'dotenv/config';
 import 'reflect-metadata';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
