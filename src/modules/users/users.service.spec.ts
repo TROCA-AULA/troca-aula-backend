@@ -13,6 +13,8 @@ describe('UsersService', () => {
     findOneBy: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    assignProfile: jest.fn(),
+    unassignProfile: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -50,6 +52,37 @@ describe('UsersService', () => {
       const result = await service.findAll();
       expect(repository.findAll).toHaveBeenCalled();
       expect(result).toEqual([]);
+    });
+
+    it('should pass the filter through to repository.findAll', async () => {
+      mockRepository.findAll.mockResolvedValue([]);
+      await service.findAll({ schoolId: 1, profileId: 3 });
+      expect(repository.findAll).toHaveBeenCalledWith({
+        schoolId: 1,
+        profileId: 3,
+      });
+    });
+  });
+
+  describe('assignProfile', () => {
+    it('should call repository.assignProfile with approvedById', async () => {
+      mockRepository.assignProfile.mockResolvedValue({
+        userId: 1,
+        profileId: 2,
+        schoolId: 3,
+      });
+      const result = await service.assignProfile(1, 2, 3, 9);
+      expect(repository.assignProfile).toHaveBeenCalledWith(1, 2, 3, 9);
+      expect(result).toEqual({ userId: 1, profileId: 2, schoolId: 3 });
+    });
+  });
+
+  describe('unassignProfile', () => {
+    it('should call repository.unassignProfile', async () => {
+      mockRepository.unassignProfile.mockResolvedValue({ userId: 1 });
+      const result = await service.unassignProfile(1, 2, 3);
+      expect(repository.unassignProfile).toHaveBeenCalledWith(1, 2, 3);
+      expect(result).toEqual({ userId: 1 });
     });
   });
 

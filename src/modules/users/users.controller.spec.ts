@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { ConfigService } from '@nestjs/config';
+import { AuthGuard } from '../auth/auth.guard';
+import { TenantGuard } from '../auth/guards/tenant.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -14,11 +17,17 @@ describe('UsersController', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    assignProfile: jest.fn(),
+    unassignProfile: jest.fn(),
   };
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue(10),
   };
+
+  // Ver nota em subjects.controller.spec.ts: guards sobrescritos, pois este
+  // é um teste unitário de controller que chama os métodos diretamente.
+  const mockGuard = { canActivate: jest.fn().mockReturnValue(true) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -33,7 +42,14 @@ describe('UsersController', () => {
           useValue: mockConfigService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue(mockGuard)
+      .overrideGuard(TenantGuard)
+      .useValue(mockGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockGuard)
+      .compile();
 
     controller = module.get<UsersController>(UsersController);
     service = module.get<UsersService>(UsersService);
@@ -62,11 +78,49 @@ describe('UsersController', () => {
   });
 
   describe('findAll', () => {
-    it('should call service.findAll', async () => {
+    it('should call service.findAll without filter', async () => {
       mockUsersService.findAll.mockResolvedValue([]);
-      const result = await controller.findAll();
-      expect(service.findAll).toHaveBeenCalled();
+      const result = await controller.findAll({} as any);
+      expect(service.findAll).toHaveBeenCalledWith({
+        schoolId: undefined,
+        profileId: undefined,
+      });
       expect(result).toEqual([]);
+    });
+
+    it('should forward schoolId/profileId query filters', async () => {
+      mockUsersService.findAll.mockResolvedValue([]);
+      await controller.findAll({ schoolId: 1, profileId: 3 } as any);
+      expect(service.findAll).toHaveBeenCalledWith({
+        schoolId: 1,
+        profileId: 3,
+      });
+    });
+  });
+
+  describe('assignProfile', () => {
+    it('should call service.assignProfile with the caller id as approvedById', async () => {
+      mockUsersService.assignProfile.mockResolvedValue({ userId: 5 });
+      const req = { user: { id: 9 } };
+      const result = await controller.assignProfile(
+        '5',
+        { profileId: 1, schoolId: 2 } as any,
+        req as any,
+      );
+      expect(service.assignProfile).toHaveBeenCalledWith(5, 1, 2, 9);
+      expect(result).toEqual({ userId: 5 });
+    });
+  });
+
+  describe('unassignProfile', () => {
+    it('should call service.unassignProfile', async () => {
+      mockUsersService.unassignProfile.mockResolvedValue({ userId: 5 });
+      const result = await controller.unassignProfile('5', {
+        profileId: 1,
+        schoolId: 2,
+      } as any);
+      expect(service.unassignProfile).toHaveBeenCalledWith(5, 1, 2);
+      expect(result).toEqual({ userId: 5 });
     });
   });
 
