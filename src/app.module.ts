@@ -8,9 +8,14 @@ import { SchoolsModule } from './modules/schools/schools.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { ProfileModule } from './modules/profile/profile.module';
-import { PrismaModule } from './prisma.module';
+import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EnrollmentRequestsModule } from './modules/enrollment-requests/enrollment-requests.module';
+import { TenantModule } from './modules/auth/tenant/tenant.module';
+import { NetworksModule } from './modules/networks/networks.module';
+import { WorkloadPoliciesModule } from './modules/workload-policies/workload-policies.module';
+import { TeacherWorkloadRecordsModule } from './modules/teacher-workload-records/teacher-workload-records.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
 
 @Module({
   imports: [
@@ -18,7 +23,8 @@ import { EnrollmentRequestsModule } from './modules/enrollment-requests/enrollme
       isGlobal: true,
       load: [config],
     }),
-    PrismaModule,
+    DatabaseModule,
+    TenantModule,
     UsersModule,
     AuthModule,
     SchoolsModule,
@@ -26,6 +32,10 @@ import { EnrollmentRequestsModule } from './modules/enrollment-requests/enrollme
     ClassesModule,
     ProfileModule,
     EnrollmentRequestsModule,
+    NetworksModule,
+    WorkloadPoliciesModule,
+    AuditLogModule,
+    TeacherWorkloadRecordsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
