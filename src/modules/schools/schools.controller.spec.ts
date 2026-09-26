@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SchoolsController } from './schools.controller';
 import { SchoolsService } from './schools.service';
+import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 describe('SchoolsController', () => {
   let controller: SchoolsController;
@@ -14,6 +16,11 @@ describe('SchoolsController', () => {
     remove: jest.fn(),
   };
 
+  // Ver nota equivalente em subjects.controller.spec.ts: teste unitário de
+  // controller, guards sobrescritos para não exigir suas dependências
+  // reais neste módulo de teste isolado.
+  const mockGuard = { canActivate: jest.fn().mockReturnValue(true) };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SchoolsController],
@@ -23,7 +30,12 @@ describe('SchoolsController', () => {
           useValue: mockSchoolsService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue(mockGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockGuard)
+      .compile();
 
     controller = module.get<SchoolsController>(SchoolsController);
     service = module.get<SchoolsService>(SchoolsService);
