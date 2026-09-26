@@ -96,8 +96,10 @@ Crie um arquivo `.env` na raiz do projeto:
 DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?schema=public"
 
 # Autenticação JWT
-JWT_SECRET="sua_chave_secreta_aqui_mude_em_producao"
-JWT_EXPIRATION="24h"
+# Nome real lido pelo código (src/config/configuration.ts): SECRET, não JWT_SECRET.
+# Se omitido, cai no fallback inseguro hardcoded do código — sempre defina em qualquer ambiente.
+SECRET="sua_chave_secreta_aqui_mude_em_producao"
+SALT=10
 
 # Servidor
 PORT=3000

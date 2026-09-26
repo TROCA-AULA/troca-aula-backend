@@ -338,6 +338,26 @@ Excluir uma aula.
 
 ---
 
+### POST /classes/:id/enroll
+
+Vincula diretamente o usuário autenticado à aula (define `enrolledById`), sem passar pelo fluxo de aprovação de `enrollment-requests`. Usado internamente/legado; o fluxo padrão de troca de aula é via `enrollment-requests`.
+
+**Headers**: `Authorization: Bearer <token>`
+
+**Erros**:
+- 404: Aula ou usuário não encontrado
+- 400: Aula já inscrita por outro professor / usuário já inscrito
+
+---
+
+### DELETE /classes/:id/enroll
+
+Remove o vínculo do usuário autenticado com a aula.
+
+**Headers**: `Authorization: Bearer <token>`
+
+---
+
 ## Schools (Escolas)
 
 ### GET /schools

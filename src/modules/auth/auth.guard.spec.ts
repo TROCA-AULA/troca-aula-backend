@@ -43,13 +43,14 @@ describe('AuthGuard', () => {
 
   describe('canActivate', () => {
     it('should return true if token is valid', async () => {
+      const request: any = {
+        headers: {
+          authorization: 'Bearer valid_token',
+        },
+      };
       const context = {
         switchToHttp: () => ({
-          getRequest: () => ({
-            headers: {
-              authorization: 'Bearer valid_token',
-            },
-          }),
+          getRequest: () => request,
         }),
       } as unknown as ExecutionContext;
 
@@ -61,6 +62,7 @@ describe('AuthGuard', () => {
       expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid_token', {
         secret: 'secret',
       });
+      expect(request.user).toEqual({ id: 1 });
     });
 
     it('should throw UnauthorizedException if no token is provided', async () => {
