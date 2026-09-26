@@ -2,6 +2,14 @@
 
 Este documento lista as funcionalidades que ainda não foram implementadas no backend, identificadas durante a análise do código e comparação com a documentação.
 
+> **Ver também:** [`design-doc-evolucao-multi-tenant.md`](../../docs/design-doc-evolucao-multi-tenant.md) (raiz do projeto) — arquitetura completa da evolução multi-tenant, migração Prisma→Drizzle e conformidade municipal.
+>
+> **Atualização (Fases 0-4 implementadas + P15 corrigido — roadmap completo):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3) e indicador estatístico simples (Fase 4) estão implementados no código (branch `v2` dos dois repositórios, working tree — nada commitado ainda). Segue pendente: `MonthlyClosingReports` (schema pronto, service/controller não), RLS (deliberadamente não ativado, ver ADR-006 no Design Doc), frontend do indicador da Fase 4.
+>
+> **P15 (achado durante a Fase 3, corrigido nesta rodada):** `GET /users` ganhou filtros opcionais `schoolId`/`profileId`; novo endpoint `POST /users/:id/unassign-profile` (contraparte de `assign-profile`). Bug adicional corrigido: `assign-profile` nunca setava `approvedAt`/`approvedById`, então o vínculo criado nunca era considerado aprovado — o endpoint não concedia acesso nenhum na prática. Validado end-to-end contra Postgres real (criar → vincular → listar filtrado → desvincular → confirmar sumiço).
+>
+> **Fase 4 (indicador estatístico, prioridade COULD):** `GET /classes/coverage-stats?schoolId=&subjectId=&dayOfWeek=` — taxa histórica de cobertura de aulas vagas (`available=false`) no recorte informado, com nível de risco (`baixo`/`medio`/`alto`, cortes em 0,7/0,4). Sem tabela nova, sem job. Protegido por `TenantGuard` quando `schoolId` é informado. Validado end-to-end contra Postgres real e via `TenantGuard` (outsider sem vínculo recebe 403).
+
 ---
 
 ## Pendências Identificadas
@@ -12,6 +20,26 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 |------|--------|------------|
 | P1 - Controle de Limite de Substituições | ✅ Implementado | Campo `substitutionLimitPerSemester` em Schools |
 | P2 - Integração Gov.br | ✅ Stub implementado | Endpoint retorna "recurso em desenvolvimento" |
+
+### Segurança/Autorização — Fase 0 do Design Doc (multi-tenant)
+
+| Item | Status | Observação |
+|------|--------|------------|
+| P3 - `assign-profile` sem checagem de escopo | ✅ Corrigido | `POST /users/:id/assign-profile` agora exige `TenantGuard` (vínculo aprovado na escola do `schoolId` informado) + `RolesGuard(MASTER, DIRETOR, AUXILIAR_ADMIN)` |
+| P4 - `SubjectsController`/`POST /users` públicos | ✅ Corrigido (Subjects) / Mantido (Users) | Mutações de `SubjectsController` agora exigem `RolesGuard(MASTER)`; leitura continua pública. `POST /users` permanece público por design (fluxo de auto-cadastro, confirmado em `docs/tutorial-teste-local-fluxos.md`) |
+| P5 - `SchoolsController`/`ClassesController` sem checagem de perfil/escola | ✅ Corrigido | Mutações de `SchoolsController` exigem `RolesGuard(MASTER)`; `ClassesController.create` exige `TenantGuard`+`RolesGuard`; `update`/`remove` validam a escola da aula no `ClassesService` (`hasSchoolAccess`) |
+| P6 - Duas lógicas de autorização divergentes | ✅ Corrigido | `classes.service.ts` e `enrollment-requests.service.ts` agora usam a mesma fonte de verdade: `TenantContextService` (`src/modules/auth/tenant/tenant-context.service.ts`) |
+| P7 - `enum ProfileEnum` desatualizado | ✅ Corrigido | `MASTER = 4` adicionado, confirmado contra a migration `20260818220000_normalize_profile_names` |
+
+**Como validar:** `npx tsc --noEmit` e `pnpm test` (211 testes, 204 passando após a Fase 4 — os 7 que falham são a mesma dívida técnica pré-existente de sempre: `profile.controller.spec.ts`, `create-user.dto.spec.ts`). Novos testes dedicados em `src/modules/auth/tenant/tenant-context.service.spec.ts`, `src/modules/auth/guards/{tenant,roles}.guard.spec.ts`, nos specs de `users` (assign/unassign-profile, filtros de `findAll`) e nos specs de `classes` (`getCoverageStats`/`getCoverageCounts`).
+
+### Ciência de Dados — Fase 4 do Design Doc (COULD, prioridade baixa)
+
+| Item | Status | Observação |
+|------|--------|------------|
+| Indicador estatístico de risco de aula vaga | ✅ Implementado | `GET /classes/coverage-stats?schoolId=&subjectId=&dayOfWeek=` (todos os filtros opcionais). Retorna `{ totalVagas, cobertas, taxaCobertura, nivel }`; `nivel` é heurística simples (≥0,7 baixo · 0,4-0,7 médio · <0,4 alto; sem dado = alto por precaução), documentada em `src/modules/classes/interfaces/coverage-stats.interface.ts`. Sem tabela nova, sem job — agregação direta sobre `Classes` existente. Protegido por `TenantGuard` quando `schoolId` é informado. |
+| Frontend do indicador | 📋 Pendente | Fora do escopo mínimo da Fase 4 (backend-only por decisão de prioridade); endpoint pronto para consumo. |
+| ML preditivo / NLP / dashboard analítico completo | ❌ Não implementado (WON'T) | Visão de futuro registrada no Design Doc, fora do roadmap comprometido deste ciclo. |
 
 ---
 
@@ -119,7 +147,41 @@ async loginGovBr(@Body() body: { token: string }) {
 | Sistema de candidaturas | ✅ Completo |
 | Controle de limite de substituições | ✅ Implementado |
 | Integração Gov.br | ✅ Stub implementado |
-| Documentação API | ✅ Atualizada |
+| Documentação API | ⚠️ Desatualizada em partes (ver nota abaixo) |
+| Guarda de tenant/perfil centralizada | ✅ Implementada (Fase 0) — ver P3-P7 acima |
+| Migração Prisma → Drizzle | ✅ Implementada (Fase 1) — ver nota técnica abaixo |
+| Modelo multi-tenant (`Networks`, `WorkloadPolicies`, `TeacherWorkloadRecords`, `AuditLog`) | ✅ Implementado (Fase 2) — ver nota técnica abaixo |
+| `MonthlyClosingReports` (relatório mensal de fechamento) | 📋 Planejado — schema pronto (`src/database/schema.ts`), sem service/controller |
+| RLS (Row-Level Security) | ❌ Deliberadamente não ativado — ver ADR-006 no Design Doc |
+| Correção do contrato quebrado de vínculo de professores (P15) | ✅ Implementado — `unassign-profile` + filtros em `GET /users` |
+| Indicador estatístico de risco de aula vaga (Fase 4) | ✅ Implementado — `GET /classes/coverage-stats`, ver seção "Ciência de Dados" acima |
+
+### Fase 1 — Migração Prisma → Drizzle (implementada)
+
+- **Driver Postgres:** `postgres` (postgres.js), com `drizzle-orm/postgres-js`. Schema traduzido 1:1 de `prisma/schema.prisma` para `src/database/schema.ts` (mesmas 7 tabelas, mesmos nomes de tabela/coluna — confirmado contra o banco real via `\d "Tabela"`, não só contra o `.prisma`).
+- **Baseline de migrations:** gerada com `drizzle-kit generate` (`drizzle/migrations/0000_sloppy_dorian_gray.sql`) e registrada manualmente em `drizzle.__drizzle_migrations` (schema/hash/timestamp calculados como o runtime `migrate()` do Drizzle faria) **sem reexecutar o DDL**, já que as tabelas já existiam (criadas pelas 11 migrations do Prisma). Validado rodando `migrate()` de verdade contra o banco local: não tentou recriar nenhuma tabela.
+- **Soft delete:** antes era middleware implícito do Prisma (`src/prisma.service.ts`, removido); agora é explícito em cada repository via `notDeleted()` (`src/database/soft-delete.ts`).
+- **Transação atômica:** `EnrollmentRequestsService.approve()` e `.cancel()` agora usam `db.transaction()` explícito para as duas escritas (liberar/ocupar a aula + atualizar o status da candidatura) — antes eram duas chamadas Prisma sequenciais sem `$transaction`.
+- **Achado real (não aparecia nos testes unitários mockados):** `DATABASE_URL` no `.env` usa `?schema=public` (convenção do Prisma) — o driver `postgres` não reconhece esse parâmetro e a conexão falhava com `unrecognized configuration parameter "schema"`. Corrigido removendo esse parâmetro antes de conectar (`toPostgresJsConnectionString()` em `src/database/drizzle.service.ts`), sem precisar mudar a `DATABASE_URL` já em uso.
+- **Validado de ponta a ponta contra o banco real** (não só testes mockados): `POST /users` (escrita) e `POST /auth/login` (leitura relacional com `upsUser`) testados manualmente contra o Postgres local.
+- **Comandos novos:** `pnpm db:generate` (gera migration a partir do schema), `pnpm db:migrate` (aplica migrations pendentes), `pnpm db:studio` (Drizzle Studio). Substituem `prisma generate`/`prisma migrate dev`/`prisma migrate deploy`.
+- **`@prisma/client` e `prisma` removidos do `package.json`.** `prisma/schema.prisma` e `prisma/migrations/` mantidos como referência histórica (não é mais a fonte de verdade).
+
+**Nota sobre documentação desatualizada:** `docs/03-endpoints.md` e `docs/04-regras-negocio.md` ainda descrevem o módulo `/swap-requests`, removido do banco pela migration `remove_swap_requests` — o fluxo real hoje é `enrollment-requests`. A spec `specs/003-substitution-limit-govbr` também diverge da implementação (spec pedia limite em horas/dia; código implementou contagem de substituições aprovadas por semestre).
+
+### Fase 2 — Modelo de dados multi-tenant (implementada)
+
+- **Tabelas novas:** `Networks` (tenant real, ADR-004), `WorkloadTypes` (catálogo global fixo, 5 categorias seedadas na migration), `WorkloadPolicies` (config por rede), `TeacherWorkloadRecords` (jornada docente, com `networkId` denormalizado), `AuditLog` (rastreabilidade, com `networkId` denormalizado). `Schools` ganhou `networkId` NOT NULL.
+- **Achado real corrigido antes da Fase 2 (bloqueava o teste E2E, não era escopo original):** a migration `prisma/migrations/20260818220000_normalize_profile_names` existia no repositório mas **nunca tinha sido aplicada** neste banco local (`_prisma_migrations` não a listava) — o perfil `MASTER` não existia de fato; havia um `Profiles.id=4` com nome `'PROFESSOR'` duplicado (não referenciado por nada) em vez de `MASTER`. Corrigido aplicando a normalização pendente diretamente via SQL (removendo o duplicado antes, para que o `id=4` liberado fosse ocupado pelo `MASTER` real, mantendo compatível com `ProfileEnum.MASTER = 4`).
+- **Migration com backfill:** `drizzle/migrations/0001_conscious_roxanne_simpson.sql`, editada à mão após o `drizzle-kit generate` para sequenciar corretamente contra dados já existentes: cria `Networks`, insere `'Rede Padrão'`, cria `WorkloadTypes` e semeia as 5 linhas, só então adiciona `Schools.networkId` (nullable → backfill para a Rede Padrão → `SET NOT NULL`). Testada de verdade contra o Postgres local com a escola pré-existente (`Escola Teste`) — o backfill funcionou sem erro.
+- **Decisão de escopo (ADR-005 revisado):** `networkId` denormalizado SOMENTE em `TeacherWorkloadRecords`/`AuditLog` (consumidor real hoje); `Classes`/`EnrollmentRequest`/`UsersProfilesSchools` não ganharam a coluna nesta fase — não há leitor para ela sem RLS ativo.
+- **Decisão de escopo (ADR-006, novo):** RLS deliberadamente NÃO ativado nesta fase — risco de bloquear linhas legítimas silenciosamente sem um mecanismo de sessão por request já implementado. Isolamento garantido hoje por `TenantGuard`/`RolesGuard` (Fase 0) + escopo explícito nas queries dos repositories.
+- **Regra de negócio central implementada:** `TeacherWorkloadRecordsService` valida, antes de criar/editar um registro, se a soma das horas vigentes do mesmo tipo para aquele professor/escola ultrapassaria `WorkloadPolicies.maxHoursPerWeek` da rede — rejeita com 400 se sim. Toda criação/edição/remoção é registrada em `AuditLog`.
+- **Módulos novos:** `NetworksModule` (CRUD, MASTER-only para escrita), `WorkloadPoliciesModule` (CRUD, MASTER-only para escrita), `TeacherWorkloadRecordsModule` (CRUD com `TenantGuard`+`RolesGuard`, endpoint `/me` para o professor ver os próprios registros), `AuditLogModule` (leitura MASTER-only).
+- **Validado de ponta a ponta contra o banco real:** rede criada → escola vinculada a ela → política de 10h/semana para carga suplementar → registro de 6h aceito (201) → registro adicional de 6h (totalizando 12h) corretamente rejeitado (400, mensagem com os números certos) → aceite registrado em `AuditLog`. Dados de teste removidos após a validação.
+- **Ficou de fora (documentado, não é regressão):** `MonthlyClosingReports` só tem schema, sem service/controller/geração automática — próximo passo natural do backlog, não bloqueia o restante.
+
+**Como validar:** `pnpm run build` e `pnpm test` (194 testes, 187 passando — as mesmas 7 falhas pré-existentes de antes, 0 regressão nova). Novos testes em `src/modules/networks/*.spec.ts`, `src/modules/workload-policies/*.spec.ts`, `src/modules/audit-log/*.spec.ts`, `src/modules/teacher-workload-records/*.spec.ts`.
 
 ---
 
@@ -130,4 +192,4 @@ async loginGovBr(@Body() body: { token: string }) {
 
 ---
 
-*Documento atualizado em: 2026-05-16*
+*Documento atualizado em: 2026-05-16 (seções de Fase 0/1/2 adicionadas em 2026-09-26)*
