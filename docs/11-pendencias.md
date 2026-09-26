@@ -4,7 +4,7 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 
 > **Ver também:** [`design-doc-evolucao-multi-tenant.md`](../../docs/design-doc-evolucao-multi-tenant.md) (raiz do projeto) — arquitetura completa da evolução multi-tenant, migração Prisma→Drizzle e conformidade municipal.
 >
-> **Atualização (Fases 0-4 implementadas + P15 corrigido — roadmap completo):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3) e indicador estatístico simples (Fase 4) estão implementados no código (branch `v2` dos dois repositórios, working tree — nada commitado ainda). Segue pendente: `MonthlyClosingReports` (schema pronto, service/controller não), RLS (deliberadamente não ativado, ver ADR-006 no Design Doc), frontend do indicador da Fase 4.
+> **Atualização (Fases 0-4 + P15 + MonthlyClosingReports — roadmap completo):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3), indicador estatístico simples (Fase 4) e o serviço de relatório mensal de fechamento de ponto estão implementados no código. Fases 0-4 e P15 já commitados (branch `v2`); `MonthlyClosingReports` ainda está no working tree, não commitado. Segue pendente: RLS (deliberadamente não ativado, ver ADR-006 no Design Doc), frontend do indicador da Fase 4 e de `MonthlyClosingReports`.
 >
 > **P15 (achado durante a Fase 3, corrigido nesta rodada):** `GET /users` ganhou filtros opcionais `schoolId`/`profileId`; novo endpoint `POST /users/:id/unassign-profile` (contraparte de `assign-profile`). Bug adicional corrigido: `assign-profile` nunca setava `approvedAt`/`approvedById`, então o vínculo criado nunca era considerado aprovado — o endpoint não concedia acesso nenhum na prática. Validado end-to-end contra Postgres real (criar → vincular → listar filtrado → desvincular → confirmar sumiço).
 >
@@ -151,7 +151,7 @@ async loginGovBr(@Body() body: { token: string }) {
 | Guarda de tenant/perfil centralizada | ✅ Implementada (Fase 0) — ver P3-P7 acima |
 | Migração Prisma → Drizzle | ✅ Implementada (Fase 1) — ver nota técnica abaixo |
 | Modelo multi-tenant (`Networks`, `WorkloadPolicies`, `TeacherWorkloadRecords`, `AuditLog`) | ✅ Implementado (Fase 2) — ver nota técnica abaixo |
-| `MonthlyClosingReports` (relatório mensal de fechamento) | 📋 Planejado — schema pronto (`src/database/schema.ts`), sem service/controller |
+| `MonthlyClosingReports` (relatório mensal de fechamento) | ✅ Implementado — ver seção "Fase 2b" abaixo |
 | RLS (Row-Level Security) | ❌ Deliberadamente não ativado — ver ADR-006 no Design Doc |
 | Correção do contrato quebrado de vínculo de professores (P15) | ✅ Implementado — `unassign-profile` + filtros em `GET /users` |
 | Indicador estatístico de risco de aula vaga (Fase 4) | ✅ Implementado — `GET /classes/coverage-stats`, ver seção "Ciência de Dados" acima |
@@ -179,9 +179,19 @@ async loginGovBr(@Body() body: { token: string }) {
 - **Regra de negócio central implementada:** `TeacherWorkloadRecordsService` valida, antes de criar/editar um registro, se a soma das horas vigentes do mesmo tipo para aquele professor/escola ultrapassaria `WorkloadPolicies.maxHoursPerWeek` da rede — rejeita com 400 se sim. Toda criação/edição/remoção é registrada em `AuditLog`.
 - **Módulos novos:** `NetworksModule` (CRUD, MASTER-only para escrita), `WorkloadPoliciesModule` (CRUD, MASTER-only para escrita), `TeacherWorkloadRecordsModule` (CRUD com `TenantGuard`+`RolesGuard`, endpoint `/me` para o professor ver os próprios registros), `AuditLogModule` (leitura MASTER-only).
 - **Validado de ponta a ponta contra o banco real:** rede criada → escola vinculada a ela → política de 10h/semana para carga suplementar → registro de 6h aceito (201) → registro adicional de 6h (totalizando 12h) corretamente rejeitado (400, mensagem com os números certos) → aceite registrado em `AuditLog`. Dados de teste removidos após a validação.
-- **Ficou de fora (documentado, não é regressão):** `MonthlyClosingReports` só tem schema, sem service/controller/geração automática — próximo passo natural do backlog, não bloqueia o restante.
-
 **Como validar:** `pnpm run build` e `pnpm test` (194 testes, 187 passando — as mesmas 7 falhas pré-existentes de antes, 0 regressão nova). Novos testes em `src/modules/networks/*.spec.ts`, `src/modules/workload-policies/*.spec.ts`, `src/modules/audit-log/*.spec.ts`, `src/modules/teacher-workload-records/*.spec.ts`.
+
+### Fase 2b — `MonthlyClosingReports` (implementada, ainda não commitada)
+
+- **Geração:** `POST /monthly-closing-reports/generate` (`userId`, `schoolId`, `referenceMonth` formato `YYYY-MM`) agrega os `TeacherWorkloadRecords` cujo período de vigência (`validFrom`/`validTo`) sobrepõe o mês, agrupando e somando `hours` por `workloadType.code` (`src/modules/monthly-closing-reports/monthly-closing-reports.repository.ts#aggregateWorkload`). Grava `status: 'DRAFT'`.
+- **Idempotência:** regerar um relatório ainda em `DRAFT` sobrescreve o `workloadBreakdown` (permite capturar lançamentos novos antes da revisão da gestão); regerar um relatório já `REVIEWED`/`CLOSED` é rejeitado com 400 — ajuste em relatório já conferido exigiria um fluxo de correção explícita (proposta do Sr. Walter, §6.3), fora do escopo desta implementação.
+- **Transições:** `PATCH /:id/review` (`DRAFT`→`REVIEWED`, seta `reviewedById`/`reviewedAt`) e `PATCH /:id/close` (`REVIEWED`→`CLOSED`; não permite pular direto de `DRAFT`). Guardadas por `RolesGuard(MASTER, DIRETOR, AUXILIAR_ADMIN)`; como a rota é por `:id` (sem `schoolId` no corpo), a checagem fina de posse da escola do relatório é feita dentro do `MonthlyClosingReportsService` (mesmo padrão de `TeacherWorkloadRecordsService.update/remove`).
+- **Leitura:** `GET /:id` libera o próprio professor (dono do relatório) mesmo sem perfil de gestão; `GET /` (listagem) exige perfil de gestão.
+- **Auditoria:** geração, revisão e fechamento registrados em `AuditLog` (reaproveita `AuditLogService` da Fase 2).
+- **Validado de ponta a ponta contra o banco real:** professor com AULA=20h (vigente desde jan/2026) + SUPLEMENTAR=6h (vigente desde fev/2026) + SUBSTITUICAO=3h (só em fev/2026) → relatório de março/2026 gerado com `{AULA: 20, SUPLEMENTAR: 6, total: 26}` (SUBSTITUICAO corretamente excluído por não vigorar em março) → `close` sem `review` prévio rejeitado (400) → `review` → `close` → regenerar depois de `CLOSED` rejeitado (400). Dados de teste removidos após a validação.
+- **Ficou de fora (documentado, não é regressão):** fluxo de correção/ajuste de um relatório já `CLOSED`; frontend de consumo.
+
+**Como validar:** `npx tsc --noEmit` e `pnpm test` (221 testes, 214 passando — mesmas 7 falhas pré-existentes, 0 regressão). Novos testes em `src/modules/monthly-closing-reports/monthly-closing-reports.service.spec.ts`.
 
 ---
 

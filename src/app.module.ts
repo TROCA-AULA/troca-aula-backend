@@ -16,6 +16,7 @@ import { NetworksModule } from './modules/networks/networks.module';
 import { WorkloadPoliciesModule } from './modules/workload-policies/workload-policies.module';
 import { TeacherWorkloadRecordsModule } from './modules/teacher-workload-records/teacher-workload-records.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { MonthlyClosingReportsModule } from './modules/monthly-closing-reports/monthly-closing-reports.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
     WorkloadPoliciesModule,
     AuditLogModule,
     TeacherWorkloadRecordsModule,
+    MonthlyClosingReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
