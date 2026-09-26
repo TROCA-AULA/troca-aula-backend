@@ -4,11 +4,16 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service';
+import { and, eq, or } from 'drizzle-orm';
+import { DrizzleService } from '../../database/drizzle.service';
+import { classes, enrollmentRequest } from '../../database/schema';
+import { notDeleted } from '../../database/soft-delete';
 import { EnrollmentRequestsRepository } from './enrollment-requests.repository';
 import { UsersRepository } from '../users/users.repository';
 import { FilterEnrollmentRequestDto } from './dto/filter-enrollment-request.dto';
 import { ClassesRepository } from '../classes/classes.repository';
+import { TenantContextService } from '../auth/tenant/tenant-context.service';
+import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 
 @Injectable()
 export class EnrollmentRequestsService {
@@ -16,18 +21,9 @@ export class EnrollmentRequestsService {
     private readonly repository: EnrollmentRequestsRepository,
     private readonly userRepository: UsersRepository,
     private readonly classesRepository: ClassesRepository,
-    private readonly prisma: PrismaService,
+    private readonly drizzle: DrizzleService,
+    private readonly tenantContextService: TenantContextService,
   ) {}
-
-  private getPrimaryRoleName(userWithProfile: {
-    upsUser?: Array<{ profile?: { name?: string | null } }>;
-  }): string {
-    return userWithProfile?.upsUser?.[0]?.profile?.name ?? '';
-  }
-
-  private isManagerRole(roleName: string): boolean {
-    return ['MASTER', 'DIRETOR', 'AUXILIAR_ADMIN'].includes(roleName);
-  }
 
   async create(classId: number, professorId: number) {
     const classData = await this.classesRepository.findOne(classId);
@@ -39,15 +35,13 @@ export class EnrollmentRequestsService {
       throw new BadRequestException('Aula não está disponível');
     }
 
-    const existingRequest = await this.prisma.enrollmentRequest.findFirst({
-      where: {
-        classId,
-        professorId,
-        status: 'PENDING',
-      },
+    const existingRequests = await this.repository.findAll({
+      classId,
+      professorId,
+      status: 'PENDING',
     });
 
-    if (existingRequest) {
+    if (existingRequests.length > 0) {
       throw new BadRequestException('Já existe uma solicitação pendente');
     }
 
@@ -87,22 +81,14 @@ export class EnrollmentRequestsService {
     }
 
     return this.repository.create({
-      class: { connect: { id: classId } },
-      professor: { connect: { id: professorId } },
+      classId,
+      professorId,
       status: 'PENDING',
     });
   }
 
-  private async countApprovedSubstitutions(
-    professorId: number,
-  ): Promise<number> {
-    const count = await this.prisma.enrollmentRequest.count({
-      where: {
-        professorId,
-        status: 'APPROVED',
-      },
-    });
-    return count;
+  private countApprovedSubstitutions(professorId: number): Promise<number> {
+    return this.repository.count({ professorId, status: 'APPROVED' });
   }
 
   private async checkConflict(
@@ -115,13 +101,19 @@ export class EnrollmentRequestsService {
       return false;
     }
 
-    const professorClasses = await this.prisma.classes.findMany({
-      where: {
-        OR: [{ enrolledById: professorId }, { createdByd: professorId }],
-        dayOfWeek: dayOfWeek,
-        deletedAt: null,
-      },
-    });
+    const professorClasses = await this.drizzle.db
+      .select()
+      .from(classes)
+      .where(
+        and(
+          or(
+            eq(classes.enrolledById, professorId),
+            eq(classes.createdByd, professorId),
+          ),
+          eq(classes.dayOfWeek, dayOfWeek),
+          notDeleted(classes),
+        ),
+      );
 
     for (const cls of professorClasses) {
       if (cls.startTime && cls.endTime) {
@@ -144,70 +136,45 @@ export class EnrollmentRequestsService {
   }
 
   async findAll(params: FilterEnrollmentRequestDto, userId: number) {
-    const user = await this.userRepository.findOne(userId);
-    if (!user) {
-      throw new NotFoundException('Usuário não encontrado');
+    const tenant = await this.tenantContextService.resolve(userId);
+    const isManager = this.tenantContextService.hasAnyRole(
+      tenant,
+      MANAGER_PROFILES,
+    );
+    const managerSchoolId = tenant.links[0]?.schoolId;
+
+    const filters: Parameters<EnrollmentRequestsRepository['findAll']>[0] = {};
+
+    if (params.status) filters.status = params.status;
+    if (params.classId) filters.classId = params.classId;
+    if (params.professorId) filters.professorId = params.professorId;
+    if (params.userId) filters.professorId = params.userId;
+
+    if (params.createdAfter) {
+      filters.createdAtGte = new Date(params.createdAfter);
     }
-
-    const userWithProfile = await this.prisma.users.findUnique({
-      where: { id: userId },
-      include: {
-        upsUser: {
-          include: { profile: true, school: true },
-        },
-      },
-    });
-
-    const roleName = this.getPrimaryRoleName(userWithProfile ?? {});
-    const isManager = this.isManagerRole(roleName);
-    const managerSchoolId = userWithProfile?.upsUser?.[0]?.schoolId;
-
-    const where: any = {};
-
-    if (params.status) {
-      where.status = params.status;
+    if (params.createdBefore) {
+      filters.createdAtLte = new Date(params.createdBefore);
     }
-
-    if (params.classId) {
-      where.classId = params.classId;
-    }
-
-    if (params.professorId) {
-      where.professorId = params.professorId;
-    }
-
-    if (params.userId) {
-      where.professorId = params.userId;
-    }
-
-    if (params.createdAfter || params.createdBefore || params.mes) {
-      where.createdAt = {};
-      if (params.createdAfter) {
-        where.createdAt.gte = new Date(params.createdAfter);
-      }
-      if (params.createdBefore) {
-        where.createdAt.lte = new Date(params.createdBefore);
-      }
-      if (params.mes) {
-        const start = new Date(`${params.mes}-01T00:00:00.000Z`);
-        const end = new Date(start);
-        end.setUTCMonth(end.getUTCMonth() + 1);
-        where.createdAt.gte = start;
-        where.createdAt.lt = end;
-      }
+    if (params.mes) {
+      const start = new Date(`${params.mes}-01T00:00:00.000Z`);
+      const end = new Date(start);
+      end.setUTCMonth(end.getUTCMonth() + 1);
+      filters.createdAtGte = start;
+      filters.createdAtLt = end;
     }
 
     if (params.schoolId) {
-      where.class = { schoolId: params.schoolId };
+      filters.schoolId = params.schoolId;
     }
 
     if (!isManager) {
-      where.professorId = userId;
-    } else if (roleName !== 'MASTER' && managerSchoolId) {
-      where.class = { schoolId: managerSchoolId };
+      filters.professorId = userId;
+    } else if (!tenant.isMaster && managerSchoolId) {
+      filters.schoolId = managerSchoolId;
     }
 
-    return this.repository.findAll({ where });
+    return this.repository.findAll(filters);
   }
 
   async findOne(id: number) {
@@ -225,49 +192,49 @@ export class EnrollmentRequestsService {
       throw new BadRequestException('Solicitação não está pendente');
     }
 
-    const director = await this.prisma.users.findUnique({
-      where: { id: directorId },
-      include: {
-        upsUser: {
-          include: { school: true, profile: true },
-        },
-      },
-    });
-
-    if (!director) {
-      throw new NotFoundException('Diretor não encontrado');
-    }
-
-    const roleName = this.getPrimaryRoleName(director);
-    if (!this.isManagerRole(roleName)) {
-      throw new ForbiddenException('Apenas gestor pode aprovar solicitações');
-    }
-
-    const classData = await this.prisma.classes.findUnique({
-      where: { id: request.classId },
-      include: { school: true },
-    });
+    const [classData] = await this.drizzle.db
+      .select()
+      .from(classes)
+      .where(eq(classes.id, request.classId));
 
     if (!classData) {
       throw new NotFoundException('Aula não encontrada');
     }
 
-    const directorSchoolId = director.upsUser[0]?.schoolId;
-    if (roleName !== 'MASTER' && directorSchoolId !== classData.schoolId) {
+    const tenant = await this.tenantContextService.resolve(directorId);
+    if (
+      !this.tenantContextService.hasSchoolAccess(
+        tenant,
+        classData.schoolId,
+        MANAGER_PROFILES,
+      )
+    ) {
       throw new ForbiddenException(
         'Você só pode aprovar solicitações de aulas da sua escola',
       );
     }
 
-    await this.prisma.classes.update({
-      where: { id: request.classId },
-      data: {
-        enrolledById: request.professorId,
-        available: false,
-      },
+    // As duas escritas abaixo (liberar a aula + marcar a candidatura como
+    // aprovada) precisam ser atômicas: antes da migração para Drizzle isso
+    // era feito com duas chamadas Prisma sequenciais SEM `$transaction`
+    // explícito (ver achado da auditoria em docs/design-doc-evolucao-multi-tenant.md,
+    // ADR-002) — uma falha entre as duas deixava a aula "ocupada" sem
+    // nenhuma candidatura de fato aprovada. Agora ambas rodam dentro da
+        // mesma transação: ou as duas persistem, ou nenhuma.
+    const [updated] = await this.drizzle.db.transaction(async (tx) => {
+      await tx
+        .update(classes)
+        .set({ enrolledById: request.professorId, available: false })
+        .where(eq(classes.id, request.classId));
+
+      return tx
+        .update(enrollmentRequest)
+        .set({ status: 'APPROVED', updatedAt: new Date() })
+        .where(eq(enrollmentRequest.id, id))
+        .returning();
     });
 
-    return this.repository.update(id, { status: 'APPROVED' });
+    return updated;
   }
 
   async reject(id: number, directorId: number) {
@@ -277,35 +244,23 @@ export class EnrollmentRequestsService {
       throw new BadRequestException('Solicitação não está pendente');
     }
 
-    const director = await this.prisma.users.findUnique({
-      where: { id: directorId },
-      include: {
-        upsUser: {
-          include: { school: true, profile: true },
-        },
-      },
-    });
-
-    if (!director) {
-      throw new NotFoundException('Diretor não encontrado');
-    }
-
-    const roleName = this.getPrimaryRoleName(director);
-    if (!this.isManagerRole(roleName)) {
-      throw new ForbiddenException('Apenas gestor pode rejeitar solicitações');
-    }
-
-    const classData = await this.prisma.classes.findUnique({
-      where: { id: request.classId },
-      include: { school: true },
-    });
+    const [classData] = await this.drizzle.db
+      .select()
+      .from(classes)
+      .where(eq(classes.id, request.classId));
 
     if (!classData) {
       throw new NotFoundException('Aula não encontrada');
     }
 
-    const directorSchoolId = director.upsUser[0]?.schoolId;
-    if (roleName !== 'MASTER' && directorSchoolId !== classData.schoolId) {
+    const tenant = await this.tenantContextService.resolve(directorId);
+    if (
+      !this.tenantContextService.hasSchoolAccess(
+        tenant,
+        classData.schoolId,
+        MANAGER_PROFILES,
+      )
+    ) {
       throw new ForbiddenException(
         'Você só pode rejeitar solicitações de aulas da sua escola',
       );
@@ -322,18 +277,27 @@ export class EnrollmentRequestsService {
     }
 
     if (request.status === 'APPROVED') {
-      const classData = await this.prisma.classes.findUnique({
-        where: { id: request.classId },
-      });
+      const [classData] = await this.drizzle.db
+        .select()
+        .from(classes)
+        .where(eq(classes.id, request.classId));
 
       if (classData && classData.enrolledById === professorId) {
-        await this.prisma.classes.update({
-          where: { id: request.classId },
-          data: {
-            enrolledById: null,
-            available: true,
-          },
+        // Mesmo raciocínio de atomicidade do approve(): liberar a aula e
+        // marcar a candidatura como cancelada precisam acontecer juntos.
+        const [updated] = await this.drizzle.db.transaction(async (tx) => {
+          await tx
+            .update(classes)
+            .set({ enrolledById: null, available: true })
+            .where(eq(classes.id, request.classId));
+
+          return tx
+            .update(enrollmentRequest)
+            .set({ status: 'CANCELLED', updatedAt: new Date() })
+            .where(eq(enrollmentRequest.id, id))
+            .returning();
         });
+        return updated;
       }
     }
 

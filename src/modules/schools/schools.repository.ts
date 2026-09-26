@@ -1,35 +1,50 @@
 import { Injectable } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
-import { PrismaService } from '../../prisma.service';
-import { Prisma } from '@prisma/client';
+import { DrizzleService } from '../../database/drizzle.service';
+import { schools } from '../../database/schema';
+import { notDeleted } from '../../database/soft-delete';
 
 @Injectable()
 export class SchoolsRepository {
-  constructor(private readonly prisma: PrismaService) {}
-  async create(createProfileDto: CreateSchoolDto) {
-    const subject = await this.prisma.schools.create({
-      data: { ...createProfileDto } as Prisma.SchoolsCreateInput,
-    });
-    return subject;
+  constructor(private readonly drizzle: DrizzleService) {}
+
+  async create(createSchoolDto: CreateSchoolDto) {
+    const [school] = await this.drizzle.db
+      .insert(schools)
+      .values({ ...createSchoolDto })
+      .returning();
+    return school;
   }
 
   findAll() {
-    return this.prisma.schools.findMany();
+    return this.drizzle.db.select().from(schools).where(notDeleted(schools));
   }
 
-  findOne(id: number) {
-    return this.prisma.schools.findUnique({ where: { id } });
+  async findOne(id: number) {
+    const [school] = await this.drizzle.db
+      .select()
+      .from(schools)
+      .where(and(eq(schools.id, id), notDeleted(schools)));
+    return school ?? null;
   }
 
-  update(id: number, updateProfileDto: UpdateSchoolDto) {
-    return this.prisma.schools.update({
-      data: updateProfileDto as Prisma.SchoolsUpdateInput,
-      where: { id },
-    });
+  async update(id: number, updateSchoolDto: UpdateSchoolDto) {
+    const [school] = await this.drizzle.db
+      .update(schools)
+      .set({ ...updateSchoolDto })
+      .where(eq(schools.id, id))
+      .returning();
+    return school;
   }
 
-  remove(id: number) {
-    return this.prisma.schools.delete({ where: { id } });
+  async remove(id: number) {
+    const [school] = await this.drizzle.db
+      .update(schools)
+      .set({ deletedAt: new Date() })
+      .where(eq(schools.id, id))
+      .returning();
+    return school;
   }
 }

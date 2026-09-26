@@ -3,7 +3,9 @@ import { EnrollmentRequestsService } from './enrollment-requests.service';
 import { EnrollmentRequestsRepository } from './enrollment-requests.repository';
 import { UsersRepository } from '../users/users.repository';
 import { ClassesRepository } from '../classes/classes.repository';
-import { PrismaService } from '../../prisma.service';
+import { DrizzleService } from '../../database/drizzle.service';
+import { TenantContextService } from '../auth/tenant/tenant-context.service';
+import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 import {
   NotFoundException,
   ForbiddenException,
@@ -13,15 +15,13 @@ import {
 describe('EnrollmentRequestsService', () => {
   let service: EnrollmentRequestsService;
   let repository: EnrollmentRequestsRepository;
-  let userRepository: UsersRepository;
-  let classesRepository: ClassesRepository;
-  let prisma: PrismaService;
 
   const mockRepository = {
     create: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
   };
 
   const mockUserRepository = {
@@ -32,33 +32,35 @@ describe('EnrollmentRequestsService', () => {
     findOne: jest.fn(),
   };
 
-const mockPrisma = {
-    users: {
-      findUnique: jest.fn(),
-    },
-    classes: {
-      findUnique: jest.fn(),
-      findFirst: jest.fn().mockResolvedValue(null),
-      update: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    enrollmentRequest: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-    },
-    schools: {
-      findUnique: jest.fn().mockResolvedValue(null),
-    },
+  // tx simula o objeto de transação passado para db.transaction(async (tx) => ...)
+  const mockTx = {
+    update: jest.fn(),
+  };
+
+  let mockDb: {
+    select: jest.Mock;
+    transaction: jest.Mock;
+    query: { users: { findFirst: jest.Mock } };
   };
 
   beforeEach(async () => {
+    mockDb = {
+      select: jest.fn(),
+      transaction: jest.fn((callback: (tx: typeof mockTx) => unknown) =>
+        callback(mockTx),
+      ),
+      query: { users: { findFirst: jest.fn() } },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EnrollmentRequestsService,
         { provide: EnrollmentRequestsRepository, useValue: mockRepository },
         { provide: UsersRepository, useValue: mockUserRepository },
         { provide: ClassesRepository, useValue: mockClassesRepository },
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DrizzleService, useValue: { db: mockDb } },
+        // TenantContextService real: usa o mesmo mockDb acima (query.users.findFirst).
+        TenantContextService,
       ],
     }).compile();
 
@@ -66,13 +68,11 @@ const mockPrisma = {
     repository = module.get<EnrollmentRequestsRepository>(
       EnrollmentRequestsRepository,
     );
-    userRepository = module.get<UsersRepository>(UsersRepository);
-    classesRepository = module.get<ClassesRepository>(ClassesRepository);
-    prisma = module.get<PrismaService>(PrismaService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    mockRepository.count.mockResolvedValue(0);
   });
 
   describe('create', () => {
@@ -89,7 +89,8 @@ const mockPrisma = {
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
-      mockPrisma.enrollmentRequest.findFirst.mockResolvedValue(null);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockDb.select.mockReturnValue(createDrizzleChainMock([]));
       mockRepository.create.mockResolvedValue({
         id: 1,
         classId: 1,
@@ -105,7 +106,6 @@ const mockPrisma = {
 
     it('should throw NotFoundException when class not found', async () => {
       mockClassesRepository.findOne.mockResolvedValue(null);
-      mockPrisma.enrollmentRequest.findFirst.mockResolvedValue(null);
 
       await expect(service.create(1, 2)).rejects.toThrow(NotFoundException);
     });
@@ -122,7 +122,7 @@ const mockPrisma = {
     it('should throw BadRequestException when already has pending request', async () => {
       const classData = { id: 1, available: true, subjectId: 1 };
       mockClassesRepository.findOne.mockResolvedValue(classData);
-      mockPrisma.enrollmentRequest.findFirst.mockResolvedValue({ id: 1 });
+      mockRepository.findAll.mockResolvedValue([{ id: 1 }]);
 
       await expect(service.create(1, 2)).rejects.toThrow(BadRequestException);
     });
@@ -133,7 +133,7 @@ const mockPrisma = {
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
-      mockPrisma.enrollmentRequest.findFirst.mockResolvedValue(null);
+      mockRepository.findAll.mockResolvedValue([]);
 
       await expect(service.create(1, 2)).rejects.toThrow(ForbiddenException);
     });
@@ -141,38 +141,32 @@ const mockPrisma = {
 
   describe('findAll', () => {
     it('should return enrollment requests for director', async () => {
-      const director = { id: 1 };
       const requests = [{ id: 1 }, { id: 2 }];
 
-      mockUserRepository.findOne.mockResolvedValue(director);
-      mockPrisma.users.findUnique.mockResolvedValue({
+      mockDb.query.users.findFirst.mockResolvedValue({
         id: 1,
         upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
       });
       mockRepository.findAll.mockResolvedValue(requests);
 
-      const result = await service.findAll({}, 1);
+      const result = await service.findAll({} as any, 1);
 
       expect(result).toEqual(requests);
     });
 
     it('should return only own requests for non-director', async () => {
-      const professor = { id: 2 };
       const requests = [{ id: 1, professorId: 2 }];
 
-      mockUserRepository.findOne.mockResolvedValue(professor);
-      mockPrisma.users.findUnique.mockResolvedValue({
+      mockDb.query.users.findFirst.mockResolvedValue({
         id: 2,
         upsUser: [{ profile: { name: 'PROFESSOR' }, schoolId: 1 }],
       });
       mockRepository.findAll.mockResolvedValue(requests);
 
-      const result = await service.findAll({}, 2);
+      await service.findAll({} as any, 2);
 
       expect(mockRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ professorId: 2 }),
-        }),
+        expect.objectContaining({ professorId: 2 }),
       );
     });
   });
@@ -195,29 +189,25 @@ const mockPrisma = {
   });
 
   describe('approve', () => {
-    it('should approve enrollment request and link professor', async () => {
+    it('should approve enrollment request and link professor atomically', async () => {
       const request = { id: 1, classId: 1, professorId: 2, status: 'PENDING' };
-      const director = {
-        id: 3,
-        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
-      };
       const classData = { id: 1, schoolId: 1, subjectId: 1 };
 
       mockRepository.findOne.mockResolvedValue(request);
-      mockPrisma.users.findUnique.mockResolvedValue(director);
-      mockPrisma.classes.findUnique.mockResolvedValue(classData);
-      mockRepository.update.mockResolvedValue({
-        ...request,
-        status: 'APPROVED',
+      mockDb.select.mockReturnValue(createDrizzleChainMock([classData]));
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
       });
+      mockTx.update.mockReturnValue(
+        createDrizzleChainMock([{ ...request, status: 'APPROVED' }]),
+      );
 
       const result = await service.approve(1, 3);
 
+      expect(mockDb.transaction).toHaveBeenCalled();
+      expect(mockTx.update).toHaveBeenCalledTimes(2);
       expect(result.status).toBe('APPROVED');
-      expect(mockPrisma.classes.update).toHaveBeenCalledWith({
-        where: { id: 1 },
-        data: { enrolledById: 2, available: false },
-      });
     });
 
     it('should throw BadRequestException when not pending', async () => {
@@ -225,21 +215,21 @@ const mockPrisma = {
       mockRepository.findOne.mockResolvedValue(request);
 
       await expect(service.approve(1, 1)).rejects.toThrow(BadRequestException);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
     });
   });
 
   describe('reject', () => {
     it('should reject enrollment request', async () => {
       const request = { id: 1, classId: 1, status: 'PENDING' };
-      const director = {
-        id: 3,
-        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
-      };
       const classData = { id: 1, schoolId: 1 };
 
       mockRepository.findOne.mockResolvedValue(request);
-      mockPrisma.users.findUnique.mockResolvedValue(director);
-      mockPrisma.classes.findUnique.mockResolvedValue(classData);
+      mockDb.select.mockReturnValue(createDrizzleChainMock([classData]));
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      });
       mockRepository.update.mockResolvedValue({
         ...request,
         status: 'REJECTED',
@@ -272,23 +262,21 @@ const mockPrisma = {
       await expect(service.cancel(1, 3)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should release class when cancelling approved enrollment', async () => {
+    it('should release class atomically when cancelling approved enrollment', async () => {
       const request = { id: 1, classId: 1, professorId: 2, status: 'APPROVED' };
       const classData = { id: 1, enrolledById: 2 };
 
       mockRepository.findOne.mockResolvedValue(request);
-      mockPrisma.classes.findUnique.mockResolvedValue(classData);
-      mockRepository.update.mockResolvedValue({
-        ...request,
-        status: 'CANCELLED',
-      });
+      mockDb.select.mockReturnValue(createDrizzleChainMock([classData]));
+      mockTx.update.mockReturnValue(
+        createDrizzleChainMock([{ ...request, status: 'CANCELLED' }]),
+      );
 
-      await service.cancel(1, 2);
+      const result = await service.cancel(1, 2);
 
-      expect(mockPrisma.classes.update).toHaveBeenCalledWith({
-        where: { id: 1 },
-        data: { enrolledById: null, available: true },
-      });
+      expect(mockDb.transaction).toHaveBeenCalled();
+      expect(mockTx.update).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe('CANCELLED');
     });
   });
 });

@@ -1,3 +1,11 @@
+// HISTÓRICO — este arquivo não é mais a fonte de verdade do schema.
+// Fase 1 da migração para Drizzle (docs/design-doc-evolucao-multi-tenant.md,
+// ADR-002) substituiu o Prisma em runtime: o schema atual vive em
+// src/database/schema.ts, e as migrations novas em drizzle/migrations/.
+// Este arquivo é mantido apenas como referência do desenho original e do
+// histórico de migrations em prisma/migrations/ (11 migrations aplicadas ao
+// banco real entre 2025-04 e 2026-08, preservadas aqui por completude).
+//
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
