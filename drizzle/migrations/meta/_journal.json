@@ -15,6 +15,13 @@
       "when": 1790400929541,
       "tag": "0001_conscious_roxanne_simpson",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790463679130,
+      "tag": "0002_seed_profiles",
+      "breakpoints": true
     }
   ]
 }
