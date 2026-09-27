@@ -56,6 +56,30 @@ export class EnrollmentRequestsService {
       );
     }
 
+    // Janela de prioridade da escola (Schools.priorityWindowHours): defesa
+    // em profundidade - a listagem (ClassesService.findAll) já esconde a
+    // vaga de professores externos durante a janela, mas isso não impede
+    // alguém de tentar se candidatar direto pelo classId. Mesma regra
+    // aplicada aqui: só bloqueia quem NÃO tem nenhum vínculo com a escola.
+    const windowHours = classData.school?.priorityWindowHours;
+    if (windowHours) {
+      const tenant = await this.tenantContextService.resolve(professorId);
+      const isLinkedToSchool = tenant.links.some(
+        (link) => link.schoolId === classData.schoolId,
+      );
+      if (!isLinkedToSchool) {
+        const createdAt = classData.createdAt
+          ? new Date(classData.createdAt).getTime()
+          : 0;
+        const windowEndsAt = createdAt + windowHours * 60 * 60 * 1000;
+        if (Date.now() < windowEndsAt) {
+          throw new ForbiddenException(
+            'Esta vaga está em janela de prioridade para professores da escola',
+          );
+        }
+      }
+    }
+
     const hasConflict = await this.checkConflict(
       professorId,
       classData.dayOfWeek,

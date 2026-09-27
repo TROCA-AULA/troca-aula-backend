@@ -30,4 +30,8 @@ export interface TenantContext {
   userId: number;
   isMaster: boolean;
   links: SchoolLink[];
+  // Matéria do usuário (só professores têm) - usado para filtrar a
+  // listagem de aulas vagas pela disciplina que o professor pode lecionar
+  // (ver ClassesService.findAll). null para quem não tem subjectId.
+  subjectId: number | null;
 }

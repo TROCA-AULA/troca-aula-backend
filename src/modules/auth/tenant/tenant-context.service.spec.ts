@@ -66,14 +66,14 @@ describe('TenantContextService', () => {
 
   describe('hasSchoolAccess', () => {
     it('returns true for MASTER regardless of school', () => {
-      const tenant = { userId: 1, isMaster: true, links: [] };
+      const tenant = { userId: 1, isMaster: true, subjectId: null, links: [] };
       expect(service.hasSchoolAccess(tenant, 999)).toBe(true);
     });
 
     it('returns true when a link matches the school and no profile filter is given', () => {
       const tenant = {
         userId: 1,
-        isMaster: false,
+        isMaster: false, subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -89,7 +89,7 @@ describe('TenantContextService', () => {
     it('returns false when no link matches the school', () => {
       const tenant = {
         userId: 1,
-        isMaster: false,
+        isMaster: false, subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -105,7 +105,7 @@ describe('TenantContextService', () => {
     it('returns false when the link matches the school but not the allowed profiles', () => {
       const tenant = {
         userId: 1,
-        isMaster: false,
+        isMaster: false, subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -121,14 +121,14 @@ describe('TenantContextService', () => {
 
   describe('hasAnyRole', () => {
     it('returns true for MASTER regardless of roles', () => {
-      const tenant = { userId: 1, isMaster: true, links: [] };
+      const tenant = { userId: 1, isMaster: true, subjectId: null, links: [] };
       expect(service.hasAnyRole(tenant, ['DIRETOR'])).toBe(true);
     });
 
     it('returns true when any link has an allowed profile', () => {
       const tenant = {
         userId: 1,
-        isMaster: false,
+        isMaster: false, subjectId: null,
         links: [
           {
             schoolId: 1,
@@ -144,7 +144,7 @@ describe('TenantContextService', () => {
     it('returns false when no link has an allowed profile', () => {
       const tenant = {
         userId: 1,
-        isMaster: false,
+        isMaster: false, subjectId: null,
         links: [
           {
             schoolId: 1,

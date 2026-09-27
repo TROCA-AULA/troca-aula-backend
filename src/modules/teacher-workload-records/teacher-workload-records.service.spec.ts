@@ -111,7 +111,7 @@ describe('TeacherWorkloadRecordsService', () => {
         workloadTypeId: 4,
         hours: '5',
       } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, links: [] });
+      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
       await expect(service.remove(5, 2)).rejects.toThrow(ForbiddenException);
@@ -129,7 +129,7 @@ describe('TeacherWorkloadRecordsService', () => {
       } as any);
       tenantContextService.resolve.mockResolvedValue({
         userId: 2,
-        isMaster: true,
+        isMaster: true, subjectId: null,
         links: [{ schoolId: 1, profileId: 4, profileName: ProfileName.MASTER, approvedAt: new Date() }],
       });
       tenantContextService.hasSchoolAccess.mockReturnValue(true);

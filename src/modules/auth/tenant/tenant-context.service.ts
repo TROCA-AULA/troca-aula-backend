@@ -40,6 +40,7 @@ export class TenantContextService {
       userId,
       isMaster: links.some((link) => link.profileName === ProfileName.MASTER),
       links,
+      subjectId: user.subjectId ?? null,
     };
   }
 

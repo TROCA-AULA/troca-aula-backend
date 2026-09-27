@@ -33,17 +33,84 @@ export class ClassesService {
 
   async findAll(params: GetClassDto) {
     let currentParams = params;
+    let professorFilter: {
+      subjectId: number | null;
+      linkedSchoolIds: Set<number>;
+    } | null = null;
+
     if (params.userId) {
       const tenant = await this.tenantContextService.resolve(params.userId);
-      const primaryLink = tenant.links[0];
-      if (primaryLink && primaryLink.profileName !== ProfileName.PROFESSOR) {
+      // Gestor = MASTER ou tem QUALQUER vínculo de perfil de gestão - não
+      // só olhar tenant.links[0]. Achado real de bug ao validar contra
+      // Postgres: um professor recém-criado, ainda SEM NENHUM vínculo
+      // aprovado, tinha links=[] -> primaryLink undefined -> a condição
+      // antiga não caía nem no ramo "gestor" nem no ramo "professor", e a
+      // listagem voltava sem filtro nenhum (professor externo via vaga
+      // dentro da janela de prioridade, que é exatamente o que a janela
+      // deveria impedir).
+      const isManager =
+        tenant.isMaster ||
+        tenant.links.some((l) => (MANAGER_PROFILES as string[]).includes(l.profileName));
+
+      if (isManager) {
+        const primaryLink = tenant.links[0];
         currentParams = {
-          schoolId: primaryLink.schoolId,
+          schoolId: primaryLink?.schoolId,
           available: params.available,
+        };
+      } else {
+        // Não-gestor (professor com vínculo, ou usuário sem nenhum vínculo
+        // ainda): mantém os params originais (não escopa a uma única
+        // escola - pode ver vagas de qualquer escola em que tenha vínculo,
+        // ou de fora, sujeito ao filtro de matéria/janela abaixo), mas
+        // guarda o contexto para filtrar o resultado. linkedSchoolIds fica
+        // vazio para quem não tem vínculo nenhum - tratado como "externo"
+        // em qualquer escola, corretamente sujeito à janela de prioridade.
+        professorFilter = {
+          subjectId: tenant.subjectId,
+          linkedSchoolIds: new Set(tenant.links.map((l) => l.schoolId)),
         };
       }
     }
-    return this.repository.findAll(currentParams);
+
+    const results = await this.repository.findAll(currentParams);
+    if (!professorFilter) {
+      return results;
+    }
+
+    // Achado real (relatado pelo usuário): a listagem não filtrava por
+    // disciplina - o professor via aulas de qualquer matéria e só descobria
+    // que não podia se candidatar ao tentar (EnrollmentRequestsService.create
+    // já validava subjectId, mas só ali). Filtrando aqui também, a listagem
+    // fica coerente com o que o professor realmente pode fazer.
+    return results.filter((classItem) => {
+      if (
+        professorFilter!.subjectId !== null &&
+        classItem.subjectId !== professorFilter!.subjectId
+      ) {
+        return false;
+      }
+
+      // Janela de prioridade da escola (Schools.priorityWindowHours, por
+      // escola - não confundir com WorkloadPolicies, que é por rede):
+      // enquanto a janela não fechou, só professores vinculados àquela
+      // escola veem a vaga. "Vinculado" aqui é qualquer vínculo (aprovado
+      // ou não) - um vínculo pendente de aprovação ainda identifica alguém
+      // como "da escola" para fins desta regra de visibilidade, que é mais
+      // branda que controle de acesso.
+      const windowHours = classItem.school?.priorityWindowHours;
+      if (windowHours && !professorFilter!.linkedSchoolIds.has(classItem.schoolId)) {
+        const createdAt = classItem.createdAt
+          ? new Date(classItem.createdAt).getTime()
+          : 0;
+        const windowEndsAt = createdAt + windowHours * 60 * 60 * 1000;
+        if (Date.now() < windowEndsAt) {
+          return false;
+        }
+      }
+
+      return true;
+    });
   }
 
   findOne(id: number) {

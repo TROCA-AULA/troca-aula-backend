@@ -86,6 +86,14 @@ export const schools = pgTable('Schools', {
     .references(() => networks.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
   name: text('name').notNull(),
   substitutionLimitPerSemester: integer('substitutionLimitPerSemester'),
+  // Regra de prioridade da própria escola (não da rede - diferente de
+  // WorkloadPolicies, que é config por rede): quantas horas após a criação
+  // de uma aula vaga ela fica visível só para professores vinculados a esta
+  // escola, antes de abrir para professores externos. NULL = sem janela,
+  // aberta imediatamente para todos (default retrocompatível). Configurado
+  // pela própria direção da escola, não só pelo MASTER - ver
+  // SchoolsController.updatePriorityWindow.
+  priorityWindowHours: integer('priorityWindowHours'),
   createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
   deletedAt: timestamp('deletedAt', { precision: 3 }),
 });

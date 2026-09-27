@@ -123,6 +123,99 @@ describe('ClassesService', () => {
 
       expect(repository.findAll).toHaveBeenCalledWith(params);
     });
+
+    // Achado real relatado pelo usuário: a listagem não filtrava por
+    // disciplina, só a candidatura. Corrigido para o professor não ver
+    // vagas que ele nunca poderia aceitar de qualquer forma.
+    it('filters out classes whose subject does not match the professor subjectId', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        subjectId: 5,
+        upsUser: [
+          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+        ],
+      });
+      mockRepository.findAll.mockResolvedValue([
+        { id: 1, subjectId: 5, schoolId: 10, createdAt: new Date(), school: { priorityWindowHours: null } },
+        { id: 2, subjectId: 9, schoolId: 10, createdAt: new Date(), school: { priorityWindowHours: null } },
+      ]);
+
+      const result = await service.findAll({ userId: 1 } as any);
+
+      expect(result).toEqual([
+        { id: 1, subjectId: 5, schoolId: 10, createdAt: expect.any(Date), school: { priorityWindowHours: null } },
+      ]);
+    });
+
+    it('hides a class from an unlinked school while the priority window has not elapsed', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        subjectId: 5,
+        upsUser: [
+          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+        ],
+      });
+      mockRepository.findAll.mockResolvedValue([
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 99, // escola diferente da que o professor tem vínculo (10)
+          createdAt: new Date(), // criada agora - dentro da janela de 4h
+          school: { priorityWindowHours: 4 },
+        },
+      ]);
+
+      const result = await service.findAll({ userId: 1 } as any);
+
+      expect(result).toEqual([]);
+    });
+
+    it('shows a class from an unlinked school once the priority window has elapsed', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        subjectId: 5,
+        upsUser: [
+          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+        ],
+      });
+      const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      mockRepository.findAll.mockResolvedValue([
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 99,
+          createdAt: fiveHoursAgo, // janela de 4h já passou
+          school: { priorityWindowHours: 4 },
+        },
+      ]);
+
+      const result = await service.findAll({ userId: 1 } as any);
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('always shows a class from a school the professor is linked to, regardless of the priority window', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        subjectId: 5,
+        upsUser: [
+          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+        ],
+      });
+      mockRepository.findAll.mockResolvedValue([
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 10, // mesma escola do vínculo do professor
+          createdAt: new Date(), // criada agora
+          school: { priorityWindowHours: 4 },
+        },
+      ]);
+
+      const result = await service.findAll({ userId: 1 } as any);
+
+      expect(result).toHaveLength(1);
+    });
   });
 
   describe('findOne', () => {

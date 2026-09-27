@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, count, eq, gte, lt, lte, SQL } from 'drizzle-orm';
 import { DrizzleService } from '../../database/drizzle.service';
-import { classes, enrollmentRequest } from '../../database/schema';
+import { classes, enrollmentRequest, usersProfilesSchools } from '../../database/schema';
 
 export interface EnrollmentRequestCreateData {
   classId: number;
@@ -58,22 +58,38 @@ export class EnrollmentRequestsRepository {
     return conditions;
   }
 
+  // "schoolSince" = approvedAt do vínculo do professor NAQUELA escola
+  // específica (a mesma escola da aula candidatada) - "tempo de casa" que a
+  // direção usa para decidir a quem dar preferência na aprovação (Design
+  // Doc: regra de prioridade é informativa/manual, não um bloqueio rígido
+  // no sistema). Sempre faz o join com Classes agora (antes só quando
+  // filters.schoolId era informado) porque precisamos de classes.schoolId
+  // para resolver o vínculo certo em qualquer listagem, não só a filtrada
+  // por escola - sem mudança de comportamento (toda EnrollmentRequest tem
+  // uma Classes válida via FK).
   async findAll(filters: EnrollmentRequestFilters) {
     const conditions = this.buildConditions(filters);
-
     if (filters.schoolId) {
-      const rows = await this.drizzle.db
-        .select({ enrollmentRequest })
-        .from(enrollmentRequest)
-        .innerJoin(classes, eq(classes.id, enrollmentRequest.classId))
-        .where(and(...conditions, eq(classes.schoolId, filters.schoolId)));
-      return rows.map((row) => row.enrollmentRequest);
+      conditions.push(eq(classes.schoolId, filters.schoolId));
     }
 
-    return this.drizzle.db
-      .select()
+    const rows = await this.drizzle.db
+      .select({
+        enrollmentRequest,
+        schoolSince: usersProfilesSchools.approvedAt,
+      })
       .from(enrollmentRequest)
+      .innerJoin(classes, eq(classes.id, enrollmentRequest.classId))
+      .leftJoin(
+        usersProfilesSchools,
+        and(
+          eq(usersProfilesSchools.userId, enrollmentRequest.professorId),
+          eq(usersProfilesSchools.schoolId, classes.schoolId),
+        ),
+      )
       .where(conditions.length ? and(...conditions) : undefined);
+
+    return rows.map((row) => ({ ...row.enrollmentRequest, schoolSince: row.schoolSince }));
   }
 
   // Usado por EnrollmentRequestsService.countApprovedSubstitutions — troca

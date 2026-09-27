@@ -68,9 +68,14 @@ export class ClassesRepository {
     });
   }
 
+  // Inclui `school` (priorityWindowHours) porque
+  // EnrollmentRequestsService.create() precisa validar a janela de
+  // prioridade da escola ao aceitar uma candidatura - os demais usos deste
+  // método (update/remove) ignoram o campo extra sem custo real.
   findOne(id: number) {
     return this.drizzle.db.query.classes.findFirst({
       where: and(eq(classes.id, id), notDeleted(classes)),
+      with: { school: true },
     });
   }
 

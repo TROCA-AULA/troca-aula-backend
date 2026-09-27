@@ -102,7 +102,7 @@ describe('MonthlyClosingReportsService', () => {
   describe('review/close transitions', () => {
     const managerContext = {
       userId: 2,
-      isMaster: false,
+      isMaster: false, subjectId: null,
       links: [{ schoolId: 1, profileId: 1, profileName: ProfileName.DIRETOR, approvedAt: new Date() }],
     };
 
@@ -128,7 +128,7 @@ describe('MonthlyClosingReportsService', () => {
 
     it('denies review when the requester does not manage the report school', async () => {
       repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, links: [] });
+      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
       await expect(service.review(1, 2)).rejects.toThrow(ForbiddenException);
@@ -169,7 +169,7 @@ describe('MonthlyClosingReportsService', () => {
 
     it('denies a non-owner without manager access to the report school', async () => {
       repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 99, isMaster: false, links: [] });
+      tenantContextService.resolve.mockResolvedValue({ userId: 99, isMaster: false, subjectId: null, links: [] });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
       await expect(service.findOneAsOwnerOrManager(1, 99)).rejects.toThrow(ForbiddenException);

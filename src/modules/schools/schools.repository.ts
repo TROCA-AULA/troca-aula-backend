@@ -39,6 +39,15 @@ export class SchoolsRepository {
     return school;
   }
 
+  async updatePriorityWindow(id: number, priorityWindowHours: number | null) {
+    const [school] = await this.drizzle.db
+      .update(schools)
+      .set({ priorityWindowHours })
+      .where(eq(schools.id, id))
+      .returning();
+    return school;
+  }
+
   async remove(id: number) {
     const [school] = await this.drizzle.db
       .update(schools)
