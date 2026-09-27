@@ -85,22 +85,31 @@ $ pnpm run start:prod
 |--------|----------|-----------|
 | POST | /auth/login | Login com email e senha |
 
-### Swap Requests (Troca de Aulas)
+### Enrollment Requests (Candidatura a Aulas Vagas)
+
+> **Nota de correção (2026-09):** esta seção descrevia um módulo `SwapRequest`
+> ("troca direta entre professores") que **não existe mais** — foi
+> implementado num ciclo anterior e removido do banco pela migration
+> `remove_swap_requests`. O fluxo real, desde então, é "aula vaga →
+> candidatura → aprovação da direção", abaixo.
 
 Requer autenticação JWT (`Authorization: Bearer <token>`)
 
 | Método | Endpoint | Descrição | Autorização |
 |--------|----------|-----------|--------------|
-| POST | /swap-requests | Criar solicitação de troca | Apenas DIRETOR ou AUXILIAR_ADMIN |
-| GET | /swap-requests | Listar solicitações | Autenticado |
-| GET | /swap-requests/:id | Detalhar solicitação | Autenticado |
-| PATCH | /swap-requests/:id/accept | Aceitar solicitação | Apenas professor da mesma matéria |
-| PATCH | /swap-requests/:id/reject | Rejeitar solicitação | Apenas professor da mesma matéria |
-| PATCH | /swap-requests/:id/cancel | Cancelar solicitação | Apenas criador (se PENDING) |
+| POST | /enrollment-requests/request/:classId | Professor se candidata a uma aula vaga | PROFESSOR, sujeito à disciplina e à janela de prioridade da escola (ver Design Doc) |
+| GET | /enrollment-requests | Listar candidaturas (filtros: `status`, `classId`, `professorId`, `userId`, `schoolId`, `createdAfter`, `createdBefore`, `mes`) | Gestor vê da própria escola; professor vê as próprias |
+| GET | /enrollment-requests/:id | Detalhar candidatura | Gestor da escola ou o próprio professor |
+| PATCH | /enrollment-requests/:id/approve | Aprovar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |
+| PATCH | /enrollment-requests/:id/reject | Rejeitar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |
+| DELETE | /enrollment-requests/:id | Cancelar candidatura | Apenas o próprio professor (se PENDING) |
 
-**Query Params (GET /swap-requests)**:
-- `status`: PENDING, APPROVED, REJECTED, CANCELLED
-- `type`: "created" (criadas por mim) | "received" (recebidas para mim)
+Endpoints multi-tenant introduzidos na evolução para múltiplas redes/escolas
+(`Networks`, `WorkloadPolicies`, `TeacherWorkloadRecords`,
+`MonthlyClosingReports`, `GET /classes/coverage-stats`,
+`PATCH /schools/:id/priority-window`) ainda não estão documentados aqui —
+ver `docs/design-doc-evolucao-multi-tenant.md` na raiz do projeto para a
+lista completa e o contrato de cada um.
 
 ### Classes (Aulas)
 
@@ -118,9 +127,10 @@ Requer autenticação JWT (`Authorization: Bearer <token>`)
 
 ### Regras de Negócio
 
-1. **Criar SwapRequest**: Apenas usuário com perfil DIRETOR ou AUXILIAR_ADMIN
-2. **Aceitar Swap**: Apenas professor da mesma matéria da aula
-3. **Conflito de horário**: Mesmo dia + horário sobreposto = conflito
+1. **Criar aula vaga**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola
+2. **Candidatar-se**: apenas professor da mesma matéria da aula, e só se a janela de prioridade da escola já permitir (ver Design Doc)
+3. **Conflito de horário**: mesmo dia + horário sobreposto = conflito
+4. **Aprovar/rejeitar**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola da aula
 
 ## Run tests
 

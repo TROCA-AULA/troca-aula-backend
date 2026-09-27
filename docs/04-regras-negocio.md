@@ -1,5 +1,14 @@
 # Regras de Negocio
 
+> **Nota de correcao (2026-09):** as secoes de "Swap Request" abaixo
+> descreviam um modulo removido do codigo ha varios ciclos (migration
+> `remove_swap_requests`) — corrigidas para refletir o fluxo real
+> (Enrollment Request). As demais secoes deste documento **nao foram
+> reauditadas por completo** nesta correcao pontual; para a autorizacao
+> real e atualizada (guards `TenantGuard`/`RolesGuard`, perfis MASTER
+> incluido), ver `docs/design-doc-evolucao-multi-tenant.md` na raiz do
+> projeto, que e a fonte de verdade mais recente.
+
 ## Visao Geral
 
 Este documento descreve todas as regras de negocio do sistema Troca Aula, definindo quem pode fazer o que e em quais condicoes.
@@ -229,26 +238,39 @@ graph TD
 
 ---
 
-## Regras de Swap Request (Troca de Aulas)
+## Regras de Enrollment Request (Candidatura a Aula Vaga)
 
-### R003 - Criar Solicitacao de Troca
+### R003 - Candidatar-se a uma Aula Vaga
 
-**Quem pode criar**: Apenas usuarios com perfil **DIRETOR** ou **AUXILIAR_ADMIN**
+**Quem pode candidatar-se**: Qualquer usuario com perfil **PROFESSOR**, desde que lecione a mesma materia da aula
 
-**Fluxo**:
+**Fluxo real** (`EnrollmentRequestsService.create`):
 ```mermaid
 flowchart TD
-    A[Diretor cria solicitacao] --> B{Aula existe?}
+    A[Professor se candidata] --> B{Aula existe?}
     B -->|Nao| C[Erro 404]
-    B -->|Sim| D{Conflito de horario?}
-    D -->|Sim| E[Erro 400 - Conflito]
-    D -->|Nao| F[Cria SwapRequest PENDING]
+    B -->|Sim| D{Aula disponivel?}
+    D -->|Nao| E[Erro 400]
+    D -->|Sim| F{Ja tem candidatura PENDING?}
+    F -->|Sim| G[Erro 400]
+    F -->|Nao| H{Mesma materia?}
+    H -->|Nao| I[Erro 403]
+    H -->|Sim| J{Dentro da janela de<br/>prioridade da escola<br/>e sem vinculo?}
+    J -->|Sim| K[Erro 403]
+    J -->|Nao| L{Conflito de horario?}
+    L -->|Sim| M[Erro 400]
+    L -->|Nao| N{Limite de substituicoes<br/>do semestre atingido?}
+    N -->|Sim| O[Erro 400]
+    N -->|Nao| P[Cria EnrollmentRequest PENDING]
 ```
 
-**Validacoes**:
-- classId deve existir
-- targetId deve existir
-- Nao pode ter conflito de horario
+**Validacoes** (todas reais, verificadas no codigo atual):
+- `classId` deve existir e estar `available`
+- Nao pode ja existir candidatura PENDING do mesmo professor para a mesma aula
+- `professor.subjectId` deve ser igual a `class.subjectId`
+- Se a escola tiver `priorityWindowHours` configurado e a janela ainda nao fechou, o professor precisa ter vinculo com a escola (ver Design Doc, Secao 9.2)
+- Nao pode haver conflito de horario com outra substituicao ja aprovada do mesmo professor
+- Nao pode exceder `substitutionLimitPerSemester` do professor (contagem de aprovacoes no semestre)
 
 ---
 
@@ -271,61 +293,53 @@ dois_intervalos_conflitam(start1, end1, start2, end2):
 
 ---
 
-### R005 - Aceitar Solicitacao
+### R005 - Aprovar Candidatura
 
-**Quem pode aceitar**: Apenas o **professor替代** (target)
+**Quem pode aprovar**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola da aula (nao mais "o professor alvo" — a aprovacao e da gestao, nao de outro professor)
 
-**Validacao adicional**:
-- O professor替代 deve lecionar a **mesma materia** da aula
-- Comparacao: `user.subjectId = class.subjectId`
-
-**Fluxo**:
+**Fluxo** (`EnrollmentRequestsService` — transacao explicita desde a migracao para Drizzle):
 ```mermaid
 flowchart TD
-    A[Professor tenta aceitar] --> B{Solicitacao PENDING?}
+    A[Gestor aprova] --> B{Candidatura PENDING?}
     B -->|Nao| C[Erro 400]
-    B -->|Sim| D{E o target?}
+    B -->|Sim| D{Gestor tem vinculo<br/>com a escola?}
     D -->|Nao| E[Erro 403]
-    D -->|Sim| F{Mesma materia?}
-    F -->|Nao| G[Erro 403]
-    F -->|Sim| H[Status = APPROVED]
+    D -->|Sim| F["Transacao: Status = APPROVED<br/>+ Classes.available = false"]
 ```
 
 ---
 
-### R006 - Rejeitar Solicitacao
+### R006 - Rejeitar Candidatura
 
-**Quem pode rejeitar**: Apenas o **professor替代** (target)
+**Quem pode rejeitar**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola da aula
 
 **Condicao**: Status deve ser PENDING
 
 ---
 
-### R007 - Cancelar Solicitacao
+### R007 - Cancelar Candidatura
 
-**Quem pode cancelar**: Apenas o **criador** da solicitacao (requesterId)
+**Quem pode cancelar**: Apenas o **proprio professor** que se candidatou
 
 **Condicao**: Status deve ser PENDING
 
 **Fluxo**:
 ```mermaid
 flowchart TD
-    A[Professor tenta cancelar] --> B{Solicitacao PENDING?}
+    A[Professor tenta cancelar] --> B{Candidatura PENDING?}
     B -->|Nao| C[Erro 400]
-    B -->|Sim| D{E o criador?}
+    B -->|Sim| D{E o proprio professor?}
     D -->|Nao| E[Erro 403]
     D -->|Sim| F[Status = CANCELLED]
 ```
 
 ---
 
-### R008 - Listar Solicitacoes
+### R008 - Listar Candidaturas
 
-**Filtros disponiveis**:
-- **status**: PENDING, APPROVED, REJECTED, CANCELLED
-- **type**: "created" (criadas por mim) | "received" (recebidas para mim)
+**Filtros disponiveis** (`GET /enrollment-requests`): `status`, `classId`, `professorId`, `userId`, `schoolId`, `createdAfter`, `createdBefore`, `mes`
 
-**Sem filtro**: Retorna todas as solicitacoes onde o usuario e creator ou target
+**Sem filtro**: gestor ve as candidaturas da propria escola; professor ve as proprias. Resposta inclui `schoolSince` (tempo de vinculo do professor com a escola), usado pela direcao para decidir a quem dar preferencia na aprovacao.
 
 ---
 
@@ -356,7 +370,7 @@ flowchart TD
 
 ### R011 - Criar Aula
 
-**Quem pode**: Apenas **DIRETOR** ou **AUXILIAR_ADMIN**
+**Quem pode**: **DIRETOR**, **AUXILIAR_ADMIN** (propria escola) ou **MASTER** (qualquer escola)
 
 **Campos obrigatorios**:
 - schoolId (escola)
@@ -370,10 +384,11 @@ flowchart TD
 
 ---
 
-### R012 - Visualizacao de Aulas
+### R012 - Visualizacao de Aulas (corrigido — a versao anterior estava errada)
 
-- **Admin/Diretor**: Vê todas as aulas de todas as escolas
-- **Professor**: Vê apenas aulas da sua escola
+- **MASTER**: ve todas as aulas de todas as escolas
+- **DIRETOR/AUXILIAR_ADMIN**: veem apenas as aulas da **propria** escola (nao de todas)
+- **PROFESSOR**: ve aulas de qualquer escola em que tenha vinculo, filtradas pela propria materia; fora disso, sujeito a janela de prioridade da escola (Design Doc, Secao 9.2)
 
 ---
 
@@ -383,9 +398,12 @@ flowchart TD
 
 | ID | Nome | Permissoes |
 |----|------|------------|
-| 1 | DIRETOR | Criar escolas, turmas, solicitacoes de troca |
-| 2 | PROFESSOR | Aceitar/rejeitar trocas, se increver em aulas |
-| 3 | AUXILIAR_ADMIN | Criar solicitacoes de troca |
+| 1 | DIRETOR | Criar aulas vagas, aprovar/rejeitar candidaturas, gerenciar vinculos de professores da propria escola |
+| 2 | AUXILIAR_ADMIN | Mesmas permissoes operacionais de DIRETOR na propria escola |
+| 3 | PROFESSOR | Candidatar-se e cancelar candidaturas a aulas vagas |
+| 4 | MASTER | Acesso global — qualquer escola/rede, gerencia Networks e WorkloadPolicies |
+
+*(IDs confirmados contra a migration real `20260818220000_normalize_profile_names` — a tabela anterior desta secao estava com a ordem/composicao errada, faltando MASTER.)*
 
 ### R014 - Relacao Usuario-Escola-Perfil
 
@@ -409,17 +427,17 @@ erDiagram
 
 ## Matriz de Permissoes
 
-| Acao | DIRETOR | PROFESSOR | AUXILIAR_ADMIN |
-|------|---------|-----------|----------------|
-| Criar SwapRequest | Sim | Nao | Sim |
-| Aceitar Swap | Sim (mesma materia) | Sim (mesma materia) | Sim (mesma materia) |
-| Rejeitar Swap | Sim | Sim | Sim |
-| Cancelar Swap (proprio) | Sim | Sim | Sim |
-| Criar Aula | Sim | Nao | Sim |
-| Inscrever-se em Aula | Sim | Sim | Sim |
-| Cancelar Inscricao (propria) | Sim | Sim | Sim |
-| Listar Aulas (propria escola) | Sim | Sim | Sim |
-| Listar Aulas (todas) | Sim | Nao | Sim |
+| Acao | DIRETOR | PROFESSOR | AUXILIAR_ADMIN | MASTER |
+|------|---------|-----------|----------------|--------|
+| Candidatar-se a aula vaga | Nao | Sim (mesma materia, sujeito a janela de prioridade) | Nao | Nao |
+| Aprovar candidatura | Sim (propria escola) | Nao | Sim (propria escola) | Sim (qualquer escola) |
+| Rejeitar candidatura | Sim (propria escola) | Nao | Sim (propria escola) | Sim (qualquer escola) |
+| Cancelar candidatura (propria) | Nao | Sim | Nao | Nao |
+| Criar Aula | Sim (propria escola) | Nao | Sim (propria escola) | Sim (qualquer escola) |
+| Configurar janela de prioridade da escola | Sim (propria) | Nao | Sim (propria) | Sim (qualquer) |
+| Gerenciar Networks/WorkloadPolicies | Nao | Nao | Nao | Sim |
+| Listar Aulas (propria escola) | Sim | Sim | Sim | Sim |
+| Listar Aulas (todas) | Nao | Nao | Nao | Sim |
 
 ---
 
@@ -427,15 +445,13 @@ erDiagram
 
 ### DTOs - Regras de Validacao
 
-**CreateSwapRequestDto**:
-- classId: Obrigatorio, inteiro
-- targetId: Obrigatorio, inteiro
+**Candidatura a aula vaga** (`POST /enrollment-requests/request/:classId`):
+- `classId`: vem da rota, obrigatorio, inteiro
 
-**GetSwapRequestDto**:
-- status: Opcional, enum valido
-- type: Opcional, "created" ou "received"
-- classId: Opcional, inteiro
-- schoolId: Opcional, inteiro
+**FilterEnrollmentRequestDto** (`GET /enrollment-requests`):
+- status: Opcional, enum valido (PENDING/APPROVED/REJECTED/CANCELLED)
+- classId, professorId, userId, schoolId: Opcionais, inteiro
+- createdAfter, createdBefore, mes: Opcionais, filtros de data
 
 **CreateUserDto**:
 - name: Obrigatorio
