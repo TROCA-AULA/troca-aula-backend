@@ -45,6 +45,36 @@ describe('SchoolsRepository', () => {
     });
   });
 
+  describe('updatePriorityWindow', () => {
+    it('should set priorityWindowHours and return the updated school', async () => {
+      const chain = createDrizzleChainMock([
+        { id: 1, name: 'School A', priorityWindowHours: 24 },
+      ]);
+      mockDb.update.mockReturnValue(chain);
+
+      const result = await repository.updatePriorityWindow(1, 24);
+
+      expect(result).toEqual({
+        id: 1,
+        name: 'School A',
+        priorityWindowHours: 24,
+      });
+      expect(chain.set).toHaveBeenCalledWith({ priorityWindowHours: 24 });
+    });
+
+    it('should clear priorityWindowHours when null is provided', async () => {
+      const chain = createDrizzleChainMock([
+        { id: 1, name: 'School A', priorityWindowHours: null },
+      ]);
+      mockDb.update.mockReturnValue(chain);
+
+      const result = await repository.updatePriorityWindow(1, null);
+
+      expect(result.priorityWindowHours).toBeNull();
+      expect(chain.set).toHaveBeenCalledWith({ priorityWindowHours: null });
+    });
+  });
+
   describe('findOne', () => {
     it('should find one school', async () => {
       mockDb.select.mockReturnValue(

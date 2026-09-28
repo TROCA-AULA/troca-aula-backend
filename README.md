@@ -248,7 +248,7 @@ $ pnpm run test
 # e2e tests
 $ pnpm run test:e2e
 
-# test coverage
+# test coverage (minimo global de 90%: falha abaixo disso)
 $ pnpm run test:cov
 ```
 

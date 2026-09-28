@@ -179,6 +179,9 @@ pnpm run test
 pnpm run test:watch
 
 # Executar testes com cobertura de código
+# (aplica o mínimo global de 90% em statements/branches/functions/lines
+#  configurado no package.json; entrypoints/declarativo — main.ts,
+#  database/migrate.ts e database/schema.ts — ficam fora da conta)
 pnpm run test:cov
 
 # Executar testes e2e

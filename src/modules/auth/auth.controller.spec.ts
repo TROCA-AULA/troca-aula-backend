@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
@@ -65,6 +66,26 @@ describe('AuthController', () => {
         'new-pass-123',
       );
       expect(result).toEqual({ message: 'Senha alterada com sucesso' });
+    });
+  });
+
+  describe('govbrAuthUrl', () => {
+    it('should return the not implemented placeholder', () => {
+      expect(controller.govbrAuthUrl()).toEqual({
+        data: null,
+        message: 'Integracao Gov.br em desenvolvimento',
+        statusCode: HttpStatus.NOT_IMPLEMENTED,
+      });
+    });
+  });
+
+  describe('loginGovBr', () => {
+    it('should return the under development placeholder', () => {
+      expect(controller.loginGovBr()).toEqual({
+        data: null,
+        message: 'Recurso em desenvolvimento',
+        statusCode: HttpStatus.UNAUTHORIZED,
+      });
     });
   });
 });

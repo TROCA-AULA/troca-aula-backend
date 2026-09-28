@@ -36,6 +36,25 @@ describe('WorkloadPoliciesRepository', () => {
       });
       expect(result).toEqual({ id: 1, maxHoursPerWeek: '10' });
     });
+
+    it('should store null when maxHoursPerWeek is omitted and keep ataOficialRequired', async () => {
+      const chain = createDrizzleChainMock([{ id: 2, maxHoursPerWeek: null }]);
+      mockDb.insert.mockReturnValue(chain);
+
+      const result = await repository.create({
+        networkId: 1,
+        workloadTypeId: 4,
+        ataOficialRequired: false,
+      });
+
+      expect(result).toEqual({ id: 2, maxHoursPerWeek: null });
+      expect(chain.values).toHaveBeenCalledWith({
+        networkId: 1,
+        workloadTypeId: 4,
+        maxHoursPerWeek: null,
+        ataOficialRequired: false,
+      });
+    });
   });
 
   describe('findByNetworkAndType', () => {
@@ -67,6 +86,73 @@ describe('WorkloadPoliciesRepository', () => {
       );
       const result = await repository.findAll();
       expect(result).toHaveLength(2);
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return the policy when found', async () => {
+      mockDb.select.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, networkId: 1, workloadTypeId: 4 }]),
+      );
+      const result = await repository.findOne(1);
+      expect(result).toEqual({ id: 1, networkId: 1, workloadTypeId: 4 });
+    });
+
+    it('should return null when not found', async () => {
+      mockDb.select.mockReturnValue(createDrizzleChainMock([]));
+      const result = await repository.findOne(999);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    it('should map both fields when provided', async () => {
+      const chain = createDrizzleChainMock([
+        { id: 1, maxHoursPerWeek: '12.50', ataOficialRequired: false },
+      ]);
+      mockDb.update.mockReturnValue(chain);
+
+      const result = await repository.update(1, {
+        maxHoursPerWeek: 12.5,
+        ataOficialRequired: false,
+      });
+
+      expect(result).toEqual({
+        id: 1,
+        maxHoursPerWeek: '12.50',
+        ataOficialRequired: false,
+      });
+      expect(chain.set).toHaveBeenCalledWith({
+        maxHoursPerWeek: '12.5',
+        ataOficialRequired: false,
+      });
+    });
+
+    it('should update only maxHoursPerWeek when ataOficialRequired is omitted', async () => {
+      const chain = createDrizzleChainMock([{ id: 1 }]);
+      mockDb.update.mockReturnValue(chain);
+
+      await repository.update(1, { maxHoursPerWeek: 20 });
+
+      expect(chain.set).toHaveBeenCalledWith({ maxHoursPerWeek: '20' });
+    });
+
+    it('should update only ataOficialRequired when maxHoursPerWeek is omitted', async () => {
+      const chain = createDrizzleChainMock([{ id: 1 }]);
+      mockDb.update.mockReturnValue(chain);
+
+      await repository.update(1, { ataOficialRequired: true });
+
+      expect(chain.set).toHaveBeenCalledWith({ ataOficialRequired: true });
+    });
+
+    it('should set an empty object when no field is provided', async () => {
+      const chain = createDrizzleChainMock([{ id: 1 }]);
+      mockDb.update.mockReturnValue(chain);
+
+      await repository.update(1, {});
+
+      expect(chain.set).toHaveBeenCalledWith({});
     });
   });
 });
