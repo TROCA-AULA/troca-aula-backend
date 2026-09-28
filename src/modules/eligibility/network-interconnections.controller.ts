@@ -11,7 +11,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ProfileName } from '../auth/tenant/tenant-context';
-import { NetworkInterconnectionsService } from './school-priority-tiers.service';
+import { NetworkInterconnectionsService } from './school-teacher-groups.service';
 import { SetNetworkInterconnectionsDto } from './dto/preferences.dto';
 
 // Interconexão direcional entre redes (Fase 5, Seção 9.3) — gerida só

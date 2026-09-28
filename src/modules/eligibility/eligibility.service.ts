@@ -5,51 +5,45 @@ import {
   networkInterconnections,
   professorNetworkInterests,
   professorSchoolExclusions,
-  schoolPriorityTiers,
+  professorSchoolGroups,
+  schoolTeacherGroups,
   schools,
 } from '../../database/schema';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
-import {
-  EligibilityClassInput,
-  EligibilityVerdict,
-  isTierScope,
-  TierScope,
-} from './eligibility.types';
+import { EligibilityClassInput, EligibilityVerdict } from './eligibility.types';
 
 interface ProfessorEligibilityContext {
   linkedSchoolIds: Set<number>;
   linkedNetworkIds: Set<number>;
   excludedSchoolIds: Set<number>;
   interestedNetworkIds: Set<number>;
+  /** Melhor (menor delay) grupo do professor por escola. */
+  groupBySchoolId: Map<number, { name: string; delayMinutes: number }>;
 }
 
 interface SchoolEligibilityContext {
   networkId: number;
+  ungroupedDelayMinutes: number;
   priorityWindowHours: number | null;
-  tiers: Array<{
-    order: number;
-    delayMinutes: number;
-    scopeType: TierScope;
-    restrictedNetworkIds: number[] | null;
-  }>;
-  /** Redes que a rede desta escola interconectou (escopo de rede, direcional). */
+  hasGroups: boolean;
+  /** Redes que a própria rede desta escola interconectou (o que o município permite). */
   allowedNetworkIds: Set<number>;
+  /** Subconjunto que a ESCOLA aceita (null = todas as permitidas pelo município). */
+  acceptedNetworkIds: number[] | null;
 }
 
 // Fonte única da regra de VISIBILIDADE de vaga para professor (listagem e
-// candidatura usam o mesmo motor). Premissas adotadas para as perguntas de
-// negócio em aberto da Seção 9.5 do Design Doc (revisáveis sem mudar o
-// schema — documentadas no próprio documento):
-//   Q1: o nível GERAL é sempre configurável pela escola (a lista de tiers é
-//       dela); sem tier GERAL a vaga nunca abre a desconhecidos.
-//   Q2: professor sem vínculo/cidade cai naturalmente no primeiro tier que
-//       o aceite (na prática, GERAL) — não bloqueia nenhuma ação.
-//   Q3: implementado como níveis de ESCOPO (SchoolPriorityTiers), não como
-//       ranking individual por seniority (o "mais tempo de casa" continua
-//       como informação ao gestor, via schoolSince).
-//   Q4: direção da própria escola (DIRETOR/AUXILIAR_ADMIN) + MASTER
-//       administram os tiers — sem COORDENADOR_MUNICIPAL neste ciclo.
-//   Q5: interconexões são geridas só pelo MASTER neste ciclo.
+// candidatura usam o mesmo motor). Modelo definido com o stakeholder:
+//   - o município (rede) decide para quais municípios exibe suas vagas
+//     (NetworkInterconnections, direcional);
+//   - a escola pode restringir MAIS (acceptedNetworkIds ⊆ interconexões da
+//     rede) — "o mais restritivo vence";
+//   - a escola cria grupos de professores com delay próprio; quem está no
+//     grupo vê depois do delay do grupo; quem não está em nenhum grupo vê
+//     depois do delay padrão da escola (ungroupedDelayMinutes);
+//   - exclusão do próprio professor vence qualquer critério.
+// Escolas que ainda não criaram grupos mantêm o fallback retrocompatível
+// do campo único Schools.priorityWindowHours.
 @Injectable()
 export class EligibilityService {
   constructor(
@@ -97,31 +91,58 @@ export class EligibilityService {
   ): Promise<ProfessorEligibilityContext> {
     const tenant = await this.tenantContextService.resolve(professorId);
     const linkedSchoolIds = new Set(tenant.links.map((link) => link.schoolId));
+    // O vínculo já traz a rede da escola (claim resolvido pelo
+    // TenantContextService) — não precisa de query extra só para isso.
+    const linkedNetworkIds = new Set(
+      tenant.links
+        .map((link) => link.networkId)
+        .filter((networkId): networkId is number => networkId !== null),
+    );
 
-    const [exclusions, interests] = await Promise.all([
+    const [exclusions, interests, memberships] = await Promise.all([
       this.drizzle.db.query.professorSchoolExclusions.findMany({
         where: eq(professorSchoolExclusions.professorId, professorId),
       }),
       this.drizzle.db.query.professorNetworkInterests.findMany({
         where: eq(professorNetworkInterests.professorId, professorId),
       }),
+      this.drizzle.db.query.professorSchoolGroups.findMany({
+        where: eq(professorSchoolGroups.professorId, professorId),
+        with: {
+          group: {
+            columns: {
+              id: true,
+              schoolId: true,
+              name: true,
+              delayMinutes: true,
+            },
+          },
+        },
+      }),
     ]);
 
-    const linkedSchools: Array<{ id: number; networkId: number }> =
-      linkedSchoolIds.size > 0
-        ? await this.drizzle.db.query.schools.findMany({
-            where: inArray(schools.id, [...linkedSchoolIds]),
-            columns: { id: true, networkId: true },
-          })
-        : [];
+    const groupBySchoolId = new Map<
+      number,
+      { name: string; delayMinutes: number }
+    >();
+    for (const membership of memberships) {
+      const group = membership.group;
+      if (!group) continue;
+      const current = groupBySchoolId.get(group.schoolId);
+      if (!current || group.delayMinutes < current.delayMinutes) {
+        groupBySchoolId.set(group.schoolId, {
+          name: group.name,
+          delayMinutes: group.delayMinutes,
+        });
+      }
+    }
 
     return {
       linkedSchoolIds,
-      linkedNetworkIds: new Set(
-        linkedSchools.map((school) => school.networkId),
-      ),
+      linkedNetworkIds,
       excludedSchoolIds: new Set(exclusions.map((row) => row.schoolId)),
       interestedNetworkIds: new Set(interests.map((row) => row.networkId)),
+      groupBySchoolId,
     };
   }
 
@@ -133,12 +154,18 @@ export class EligibilityService {
 
     const schoolRows = await this.drizzle.db.query.schools.findMany({
       where: inArray(schools.id, schoolIds),
-      columns: { id: true, networkId: true, priorityWindowHours: true },
+      columns: {
+        id: true,
+        networkId: true,
+        priorityWindowHours: true,
+        ungroupedDelayMinutes: true,
+        acceptedNetworkIds: true,
+      },
     });
 
-    const tiers = await this.drizzle.db.query.schoolPriorityTiers.findMany({
-      where: inArray(schoolPriorityTiers.schoolId, schoolIds),
-      orderBy: (fields, { asc }) => [asc(fields.order)],
+    const groups = await this.drizzle.db.query.schoolTeacherGroups.findMany({
+      where: inArray(schoolTeacherGroups.schoolId, schoolIds),
+      columns: { id: true, schoolId: true },
     });
 
     const networkIds = [...new Set(schoolRows.map((row) => row.networkId))];
@@ -160,20 +187,11 @@ export class EligibilityService {
     for (const row of schoolRows) {
       map.set(row.id, {
         networkId: row.networkId,
+        ungroupedDelayMinutes: row.ungroupedDelayMinutes ?? 0,
         priorityWindowHours: row.priorityWindowHours ?? null,
-        tiers: tiers
-          .filter(
-            (tierRow) =>
-              tierRow.schoolId === row.id && isTierScope(tierRow.scopeType),
-          )
-          .map((tierRow) => ({
-            order: tierRow.order,
-            delayMinutes: tierRow.delayMinutes,
-            scopeType: tierRow.scopeType as TierScope,
-            restrictedNetworkIds: tierRow.restrictedNetworkIds ?? null,
-          }))
-          .sort((a, b) => a.order - b.order),
+        hasGroups: groups.some((group) => group.schoolId === row.id),
         allowedNetworkIds: allowedByOrigin.get(row.networkId) ?? new Set(),
+        acceptedNetworkIds: row.acceptedNetworkIds ?? null,
       });
     }
 
@@ -186,8 +204,7 @@ export class EligibilityService {
     professorContext: ProfessorEligibilityContext,
     now: number,
   ): EligibilityVerdict {
-    // Exclusão do próprio professor vence QUALQUER outro critério (Seção
-    // 9.3) — e a mensagem diz exatamente isso, para ele saber como desfazer.
+    // Exclusão do próprio professor vence QUALQUER outro critério.
     if (professorContext.excludedSchoolIds.has(item.schoolId)) {
       return {
         visible: false,
@@ -197,90 +214,73 @@ export class EligibilityService {
       };
     }
 
+    if (!schoolContext) {
+      return { visible: true };
+    }
+
+    // Regra do município/mercado: a rede só exibe suas vagas para as redes
+    // que interconectou (e a escola pode restringir mais). Quem tem vínculo
+    // na PRÓPRIA rede da escola sempre entra.
+    const ownNetwork =
+      professorContext.linkedSchoolIds.has(item.schoolId) ||
+      professorContext.linkedNetworkIds.has(schoolContext.networkId);
+    const accepted =
+      schoolContext.acceptedNetworkIds &&
+      schoolContext.acceptedNetworkIds.length > 0
+        ? schoolContext.acceptedNetworkIds.filter((id) =>
+            schoolContext.allowedNetworkIds.has(id),
+          )
+        : [...schoolContext.allowedNetworkIds];
+    const externalAllowed = accepted.some(
+      (networkId) =>
+        professorContext.linkedNetworkIds.has(networkId) ||
+        professorContext.interestedNetworkIds.has(networkId),
+    );
+
+    if (!ownNetwork && !externalAllowed) {
+      return {
+        visible: false,
+        reason: 'NETWORK',
+        message:
+          'Esta vaga não está disponível para professores da sua rede/município',
+      };
+    }
+
     const createdAt = item.createdAt ? new Date(item.createdAt).getTime() : 0;
     const elapsedMinutes = (now - createdAt) / 60000;
 
-    // Sem tiers configurados: fallback retrocompatível para o campo único
-    // Schools.priorityWindowHours (MVP da Seção 9.2).
-    if (!schoolContext || schoolContext.tiers.length === 0) {
-      if (professorContext.linkedSchoolIds.has(item.schoolId)) {
-        return { visible: true, tierScope: 'ESCOLA' };
-      }
-      const windowHours = schoolContext?.priorityWindowHours;
-      if (windowHours && elapsedMinutes < windowHours * 60) {
+    // Modelo de grupos (criado pela escola).
+    if (schoolContext.hasGroups) {
+      const group = professorContext.groupBySchoolId.get(item.schoolId);
+      const delayMinutes =
+        group?.delayMinutes ?? schoolContext.ungroupedDelayMinutes;
+      if (elapsedMinutes < delayMinutes) {
+        const remaining = Math.ceil(delayMinutes - elapsedMinutes);
         return {
           visible: false,
           reason: 'PRIORITY_WINDOW',
-          message:
-            'Esta vaga está em janela de prioridade para professores da escola',
+          message: group
+            ? `Esta vaga abre para o grupo "${group.name}" em ${remaining} minuto(s)`
+            : `Esta vaga abre em ${remaining} minuto(s)`,
         };
       }
-      return { visible: true, tierScope: 'GERAL' };
+      return { visible: true, groupName: group?.name };
     }
 
-    // Com tiers: o primeiro nível (na ordem configurada) para o qual o
-    // professor se qualifica é o que decide — inclusive para dizer que ele
-    // precisa esperar o atraso desse nível.
-    for (const tier of schoolContext.tiers) {
-      if (
-        !this.qualifies(
-          tier.scopeType,
-          tier.restrictedNetworkIds,
-          item.schoolId,
-          schoolContext,
-          professorContext,
-        )
-      ) {
-        continue;
-      }
-      if (elapsedMinutes < tier.delayMinutes) {
-        const remaining = Math.ceil(tier.delayMinutes - elapsedMinutes);
-        return {
-          visible: false,
-          reason: 'PRIORITY_WINDOW',
-          message: `Esta vaga abre para o seu nível de prioridade em ${remaining} minuto(s)`,
-        };
-      }
-      return { visible: true, tierScope: tier.scopeType };
+    // Fallback retrocompatível: escola sem grupos usa a janela única.
+    if (professorContext.linkedSchoolIds.has(item.schoolId)) {
+      return { visible: true };
+    }
+    const windowHours = schoolContext.priorityWindowHours;
+    if (windowHours && elapsedMinutes < windowHours * 60) {
+      const remaining = Math.ceil(windowHours * 60 - elapsedMinutes);
+      return {
+        visible: false,
+        reason: 'PRIORITY_WINDOW',
+        message: `Esta vaga está em janela de prioridade para professores da escola (abre em ${remaining} minuto(s))`,
+      };
     }
 
-    return {
-      visible: false,
-      reason: 'PRIORITY_WINDOW',
-      message:
-        'Esta vaga ainda não está disponível para o seu vínculo com esta rede/escola',
-    };
-  }
-
-  private qualifies(
-    scope: TierScope,
-    restrictedNetworkIds: number[] | null,
-    schoolId: number,
-    schoolContext: SchoolEligibilityContext,
-    professorContext: ProfessorEligibilityContext,
-  ): boolean {
-    switch (scope) {
-      case 'ESCOLA':
-        return professorContext.linkedSchoolIds.has(schoolId);
-      case 'REDE':
-        return professorContext.linkedNetworkIds.has(schoolContext.networkId);
-      case 'REDE_INTERCONECTADA_INTERESSADA': {
-        // "O mais restritivo vence" (Seção 9.4): a escola só pode escolher
-        // dentre as redes que a PRÓPRIA rede interconectou (direcional).
-        let allowed = [...schoolContext.allowedNetworkIds];
-        if (restrictedNetworkIds && restrictedNetworkIds.length > 0) {
-          allowed = allowed.filter((id) => restrictedNetworkIds.includes(id));
-        }
-        return allowed.some(
-          (networkId) =>
-            professorContext.linkedNetworkIds.has(networkId) ||
-            professorContext.interestedNetworkIds.has(networkId),
-        );
-      }
-      case 'GERAL':
-        return true;
-      default:
-        return false;
-    }
+    return { visible: true };
   }
 }

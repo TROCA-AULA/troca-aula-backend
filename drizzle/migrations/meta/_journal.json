@@ -36,6 +36,20 @@
       "when": 1790563994098,
       "tag": "0004_misty_prowler",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790607688224,
+      "tag": "0005_tough_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790607698017,
+      "tag": "0006_good_nebula",
+      "breakpoints": true
     }
   ]
 }

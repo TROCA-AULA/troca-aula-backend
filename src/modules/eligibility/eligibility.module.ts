@@ -3,10 +3,10 @@ import { EligibilityService } from './eligibility.service';
 import { ProfessorPreferencesService } from './professor-preferences.service';
 import {
   NetworkInterconnectionsService,
-  SchoolPriorityTiersService,
-} from './school-priority-tiers.service';
+  SchoolTeacherGroupsService,
+} from './school-teacher-groups.service';
 import { ProfessorPreferencesController } from './professor-preferences.controller';
-import { SchoolPriorityTiersController } from './school-priority-tiers.controller';
+import { SchoolTeacherGroupsController } from './school-teacher-groups.controller';
 import { NetworkInterconnectionsController } from './network-interconnections.controller';
 
 // Global pelo mesmo motivo de TenantModule/DatabaseModule: a regra de
@@ -16,13 +16,13 @@ import { NetworkInterconnectionsController } from './network-interconnections.co
 @Module({
   controllers: [
     ProfessorPreferencesController,
-    SchoolPriorityTiersController,
+    SchoolTeacherGroupsController,
     NetworkInterconnectionsController,
   ],
   providers: [
     EligibilityService,
     ProfessorPreferencesService,
-    SchoolPriorityTiersService,
+    SchoolTeacherGroupsService,
     NetworkInterconnectionsService,
   ],
   exports: [EligibilityService, ProfessorPreferencesService],

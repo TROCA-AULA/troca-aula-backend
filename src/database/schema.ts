@@ -97,6 +97,12 @@ export const schools = pgTable('Schools', {
   // pela própria direção da escola, não só pelo MASTER - ver
   // SchoolsController.updatePriorityWindow.
   priorityWindowHours: integer('priorityWindowHours'),
+  // Fase 5 (modelo de grupos): delay padrão para professores que não
+  // estão em nenhum grupo da escola (0 = imediato); e o subconjunto de
+  // redes interconectadas pela própria rede que esta escola aceita
+  // (NULL = aceita todas as que a rede permite — "mais restritivo vence").
+  ungroupedDelayMinutes: integer('ungroupedDelayMinutes').notNull().default(0),
+  acceptedNetworkIds: jsonb('acceptedNetworkIds').$type<number[]>(),
   createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
   deletedAt: timestamp('deletedAt', { precision: 3 }),
 });
@@ -392,26 +398,18 @@ export const auditLog = pgTable(
   ],
 );
 
-// Fase 5 — motor de elegibilidade geográfica (Design Doc Seção 9.3). Tudo
-// o que segue foi desenhado mas NÃO implementado no ciclo multi-tenant
-// original; as perguntas de negócio da Seção 9.5 foram resolvidas com as
-// premissas conservadoras documentadas no próprio Design Doc (revisáveis
-// sem mudança de schema) — ver docs/design-doc-evolucao-multi-tenant.md.
+// Fase 5 — motor de elegibilidade geográfica (Design Doc Seção 9), no
+// modelo definido com o stakeholder: GRUPOS por escola.
 //
-// Níveis de prioridade CONFIGURÁVEIS por escola (substitui o campo único
-// Schools.priorityWindowHours quando há tiers; o campo continua valendo
-// como fallback retrocompatível): lista ordenada, cada nível com seu
-// atraso em minutos a partir da criação da vaga. `scopeType`:
-//   ESCOLA                            — vinculados à própria escola
-//   REDE                              — vinculados a qualquer escola da mesma rede
-//   REDE_INTERCONECTADA_INTERESSADA   — redes interconectadas que o professor marcou interesse
-//   GERAL                             — qualquer professor do sistema
-// `restrictedNetworkIds` permite a escola restringir MAIS que a rede
-// (Seção 9.4, "o mais restritivo vence"): quando informado no nível
-// REDE_INTERCONECTADA_INTERESSADA, só vale para essas redes — que
-// precisam estar entre as interconectadas pela rede da escola.
-export const schoolPriorityTiers = pgTable(
-  'SchoolPriorityTiers',
+// Cada escola cria quantos grupos quiser (nome + tempo de espera em
+// minutos); o professor classificado em um grupo vê a vaga depois do
+// delay DAQUELE grupo; quem não está em nenhum grupo vê depois do delay
+// padrão da escola (Schools.ungroupedDelayMinutes). A rede define para
+// quais municípios ela exibe suas vagas (NetworkInterconnections) e a
+// escola pode restringir MAIS (Schools.acceptedNetworkIds, subconjunto
+// validado contra a rede — "o mais restritivo vence").
+export const schoolTeacherGroups = pgTable(
+  'SchoolTeacherGroups',
   {
     id: serial('id').primaryKey(),
     schoolId: integer('schoolId')
@@ -420,18 +418,39 @@ export const schoolPriorityTiers = pgTable(
         onDelete: 'cascade',
         onUpdate: 'cascade',
       }),
-    order: integer('order').notNull(),
+    name: text('name').notNull(),
     delayMinutes: integer('delayMinutes').notNull().default(0),
-    scopeType: text('scopeType').notNull(),
-    restrictedNetworkIds: jsonb('restrictedNetworkIds').$type<number[]>(),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('SchoolPriorityTiers_schoolId_order_key').on(
+    uniqueIndex('SchoolTeacherGroups_schoolId_name_key').on(
       table.schoolId,
-      table.order,
+      table.name,
     ),
   ],
+);
+
+// Classificação do professor nos grupos (um professor pode estar em
+// grupos de escolas diferentes; em mais de um grupo da MESMA escola,
+// vale o de menor delay — o mais favorável a ele no momento da consulta).
+export const professorSchoolGroups = pgTable(
+  'ProfessorSchoolGroups',
+  {
+    professorId: integer('professorId')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    groupId: integer('groupId')
+      .notNull()
+      .references(() => schoolTeacherGroups.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.professorId, table.groupId] })],
 );
 
 // Seção 9.3 — interconexão DIRECIONAL entre redes (Ribeirão aceitar Bomfim
@@ -621,12 +640,28 @@ export const auditLogRelations = relations(auditLog, ({ one }) => ({
   }),
 }));
 
-export const schoolPriorityTiersRelations = relations(
-  schoolPriorityTiers,
-  ({ one }) => ({
+export const schoolTeacherGroupsRelations = relations(
+  schoolTeacherGroups,
+  ({ one, many }) => ({
     school: one(schools, {
-      fields: [schoolPriorityTiers.schoolId],
+      fields: [schoolTeacherGroups.schoolId],
       references: [schools.id],
+    }),
+    members: many(professorSchoolGroups),
+  }),
+);
+
+export const professorSchoolGroupsRelations = relations(
+  professorSchoolGroups,
+  ({ one }) => ({
+    professor: one(users, {
+      fields: [professorSchoolGroups.professorId],
+      references: [users.id],
+      relationName: 'teacherGroupMemberships',
+    }),
+    group: one(schoolTeacherGroups, {
+      fields: [professorSchoolGroups.groupId],
+      references: [schoolTeacherGroups.id],
     }),
   }),
 );
@@ -765,7 +800,8 @@ export const schema = {
   teacherWorkloadRecords,
   monthlyClosingReports,
   auditLog,
-  schoolPriorityTiers,
+  schoolTeacherGroups,
+  professorSchoolGroups,
   networkInterconnections,
   professorNetworkInterests,
   professorSchoolExclusions,
@@ -782,7 +818,8 @@ export const schema = {
   teacherWorkloadRecordsRelations,
   monthlyClosingReportsRelations,
   auditLogRelations,
-  schoolPriorityTiersRelations,
+  schoolTeacherGroupsRelations,
+  professorSchoolGroupsRelations,
   networkInterconnectionsRelations,
   professorNetworkInterestsRelations,
   professorSchoolExclusionsRelations,

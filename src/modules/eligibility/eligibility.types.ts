@@ -1,26 +1,14 @@
-// Fase 5 — motor de elegibilidade geográfica (Design Doc, Seção 9).
+// Fase 5 — motor de elegibilidade geográfica (Design Doc, Seção 9),
+// modelo de GRUPOS por escola.
 
-export const TIER_SCOPES = [
-  'ESCOLA',
-  'REDE',
-  'REDE_INTERCONECTADA_INTERESSADA',
-  'GERAL',
-] as const;
-
-export type TierScope = (typeof TIER_SCOPES)[number];
-
-export function isTierScope(value: string): value is TierScope {
-  return (TIER_SCOPES as readonly string[]).includes(value);
-}
-
-export type IneligibilityReason = 'EXCLUDED' | 'PRIORITY_WINDOW';
+export type IneligibilityReason = 'EXCLUDED' | 'PRIORITY_WINDOW' | 'NETWORK';
 
 export interface EligibilityVerdict {
   visible: boolean;
   /** Por que não está visível (quando visible=false). */
   reason?: IneligibilityReason;
-  /** Nível de prioridade pelo qual a vaga está visível. */
-  tierScope?: TierScope;
+  /** Nome do grupo do professor naquela escola (quando visível por grupo). */
+  groupName?: string;
   /** Mensagem pronta para o usuário (nas duas direções). */
   message?: string;
 }
