@@ -69,7 +69,7 @@ src/modules/
 | PATCH | `/schools/:id` | Atualiza escola |
 | DELETE | `/schools/:id` | Remove escola |
 
-**Campo importante**: `substitutionLimitPerSemester` - limite de substituições por semestre
+**Campo importante**: `substitutionLimitPerSemester` - limite de substituições por semestre (existe em `Schools` e em `Users`; o gate de candidatura usa o valor do professor)
 
 ### Subjects (Disciplinas)
 
@@ -85,7 +85,7 @@ src/modules/
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
-| GET | `/classes` | Lista aulas (aceita filtros: available, dayOfWeek, etc) |
+| GET | `/classes` | Lista aulas (aceita filtros: available, schoolId, etc) |
 | GET | `/classes/:id` | Busca aula por ID |
 | POST | `/classes` | Cria nova aula vaga |
 | PATCH | `/classes/:id` | Atualiza aula |
