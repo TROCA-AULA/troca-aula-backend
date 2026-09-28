@@ -196,12 +196,16 @@ Criação, edição e remoção são registradas em `AuditLog`.
 
 ### Elegibilidade e Preferências (Fase 5 — Design Doc, Seção 9)
 
-> Motor de visibilidade de vagas por prioridade em camadas: o primeiro nível (na ordem configurada) para o qual o professor se qualifica decide quando a vaga aparece; a escola pode restringir **mais** que a rede ("o mais restritivo vence"); exclusão do próprio professor vence qualquer critério. Sem níveis configurados, vale o fallback `Schools.priorityWindowHours`. Aplicado na listagem e na candidatura.
+> Motor de visibilidade de vagas por **grupos de professores por escola**: cada escola cria grupos (nome + tempo de espera), classifica professores e define a espera de quem não está em nenhum grupo; o município define para quais municípios exibe suas vagas e a escola pode restringir **mais** que ele ("o mais restritivo vence"); exclusão do próprio professor vence qualquer critério. Escolas sem grupos usam o fallback `Schools.priorityWindowHours`. Aplicado na listagem e na candidatura.
 
 | Método | Endpoint | Descrição | Autorização |
 |--------|----------|-----------|-------------|
-| GET | /schools/:id/priority-tiers | Níveis de prioridade da escola + redes interconectadas permitidas | Gestão da escola ou MASTER |
-| PUT | /schools/:id/priority-tiers | Substitui os níveis (ordem, espera em minutos, escopo, restrição de redes) | Gestão da escola ou MASTER |
+| GET | /schools/:id/teacher-groups | Grupos da escola (com professores), delay padrão e redes permitidas | Gestão da escola ou MASTER |
+| POST | /schools/:id/teacher-groups | Cria grupo (nome + delay em minutos) | Gestão da escola ou MASTER |
+| PATCH | /schools/:id/teacher-groups/:groupId | Edita nome/delay do grupo | Gestão da escola ou MASTER |
+| DELETE | /schools/:id/teacher-groups/:groupId | Remove o grupo | Gestão da escola ou MASTER |
+| PUT | /schools/:id/teacher-groups/:groupId/members | Substitui os professores do grupo | Gestão da escola ou MASTER |
+| PATCH | /schools/:id/priority-settings | Delay de quem não está em grupo + redes aceitas (subconjunto das interconectadas) | Gestão da escola ou MASTER |
 | GET | /networks/:id/interconnections | Redes que esta rede aceita (direcional) | MASTER |
 | PUT | /networks/:id/interconnections | Substitui as interconexões | MASTER |
 | GET | /professor-preferences | Interesses de rede e exclusões de escola do próprio usuário | Autenticado |
