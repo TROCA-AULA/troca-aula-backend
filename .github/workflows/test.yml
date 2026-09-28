@@ -25,14 +25,17 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
-    - name: Generate Prisma Client
-      # Mesmo com Mocks, o Prisma precisa gerar os tipos baseados no seu schema.prisma
-      # Usamos --skip-generate para não validar a URL do banco se não for necessário
-      run: pnpm prisma generate
+    - name: Lint
+      # eslint sem --fix: no CI queremos detectar, nao reescrever arquivos
+      run: npx eslint "src/**/*.ts" "test/**/*.ts"
 
     - name: Run Build
       run: pnpm run build
 
     - name: Run Tests
-      # Aqui rodamos os testes sem precisar da DATABASE_URL real
+      # Testes unitarios nao precisam de DATABASE_URL real (repositories mockados)
       run: pnpm test
+
+    - name: Run E2E Tests
+      # E2E de wiring: o spec define um DATABASE_URL sintatico e nao toca o banco
+      run: pnpm run test:e2e
