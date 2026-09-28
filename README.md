@@ -99,6 +99,7 @@ Requer autenticação JWT (`Authorization: Bearer <token>`)
 |--------|----------|-----------|--------------|
 | POST | /enrollment-requests/request/:classId | Professor se candidata a uma aula vaga | PROFESSOR, sujeito à disciplina e à janela de prioridade da escola (ver Design Doc) |
 | GET | /enrollment-requests | Listar candidaturas (filtros: `status`, `classId`, `professorId`, `userId`, `schoolId`, `createdAfter`, `createdBefore`, `mes`) | Gestor vê da própria escola; professor vê as próprias |
+| GET | /enrollment-requests/substitution-limit/:professorId | Status do limite de substituições do semestre atual (`current`, `limit`, `percentage`, `canApply`), calculado no servidor | O próprio professor, ou DIRETOR/AUXILIAR_ADMIN/MASTER |
 | GET | /enrollment-requests/:id | Detalhar candidatura | Gestor da escola ou o próprio professor |
 | PATCH | /enrollment-requests/:id/approve | Aprovar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |
 | PATCH | /enrollment-requests/:id/reject | Rejeitar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |

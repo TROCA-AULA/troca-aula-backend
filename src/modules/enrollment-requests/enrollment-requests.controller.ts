@@ -31,6 +31,20 @@ export class EnrollmentRequestsController {
     return this.enrollmentRequestsService.findAll(query, req.user.id);
   }
 
+  // Status já calculado no servidor (limite, contagem do semestre atual,
+  // pode candidatar-se) — fonte única de verdade, substitui o cálculo de
+  // semestre que o frontend fazia com o relógio do navegador (P14).
+  @Get('substitution-limit/:professorId')
+  getSubstitutionLimitStatus(
+    @Param('professorId', ParseIntPipe) professorId: number,
+    @Request() req,
+  ) {
+    return this.enrollmentRequestsService.getSubstitutionLimitStatus(
+      professorId,
+      req.user.id,
+    );
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.enrollmentRequestsService.findOne(id);

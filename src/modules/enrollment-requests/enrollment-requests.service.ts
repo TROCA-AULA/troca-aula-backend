@@ -111,8 +111,57 @@ export class EnrollmentRequestsService {
     });
   }
 
+  // Corrige bug real (P14, problemas-conhecidos.md do frontend): a mensagem
+  // de erro sempre disse "para este semestre", mas a contagem nunca teve
+  // recorte de semestre — contava a carreira inteira do professor. Servidor
+  // é a fonte de verdade da data "agora" (nunca o relógio do cliente).
+  private getCurrentSemesterStart(): Date {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const semesterStartMonth = now.getUTCMonth() < 6 ? 0 : 6; // jan ou jul
+    return new Date(Date.UTC(year, semesterStartMonth, 1));
+  }
+
   private countApprovedSubstitutions(professorId: number): Promise<number> {
-    return this.repository.count({ professorId, status: 'APPROVED' });
+    return this.repository.count({
+      professorId,
+      status: 'APPROVED',
+      createdAtGte: this.getCurrentSemesterStart(),
+    });
+  }
+
+  // Fonte única do "quanto falta pro limite" — usada pelo frontend
+  // (useSubstitutionLimit) em vez de recalcular semestre/contagem no
+  // cliente. Professor só vê o próprio status; gestor (DIRETOR/
+  // AUXILIAR_ADMIN/MASTER) pode consultar o de qualquer professor.
+  async getSubstitutionLimitStatus(professorId: number, requesterId: number) {
+    if (requesterId !== professorId) {
+      const tenant = await this.tenantContextService.resolve(requesterId);
+      const isManager = this.tenantContextService.hasAnyRole(
+        tenant,
+        MANAGER_PROFILES,
+      );
+      if (!isManager) {
+        throw new ForbiddenException(
+          'Sem permissão para ver o limite de outro professor',
+        );
+      }
+    }
+
+    const professor = await this.userRepository.findOne(professorId);
+    if (!professor) {
+      throw new NotFoundException('Professor não encontrado');
+    }
+
+    const limit = professor.substitutionLimitPerSemester ?? null;
+    const current =
+      limit !== null && limit > 0
+        ? await this.countApprovedSubstitutions(professorId)
+        : 0;
+    const percentage = limit && limit > 0 ? Math.round((current / limit) * 100) : 0;
+    const canApply = limit === null || limit <= 0 || current < limit;
+
+    return { current, limit, percentage, canApply };
   }
 
   private async checkConflict(

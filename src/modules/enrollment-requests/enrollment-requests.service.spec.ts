@@ -225,6 +225,131 @@ describe('EnrollmentRequestsService', () => {
 
       expect(result.status).toBe('PENDING');
     });
+
+    it('should throw BadRequestException when semester limit is reached', async () => {
+      const classData = {
+        id: 1,
+        subjectId: 1,
+        dayOfWeek: 1,
+        startTime: '08:00',
+        endTime: '09:00',
+        available: true,
+      };
+      const professor = { id: 2, subjectId: 1, substitutionLimitPerSemester: 2 };
+
+      mockClassesRepository.findOne.mockResolvedValue(classData);
+      mockUserRepository.findOne.mockResolvedValue(professor);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockDb.select.mockReturnValue(createDrizzleChainMock([]));
+      mockRepository.count.mockResolvedValue(2);
+
+      await expect(service.create(1, 2)).rejects.toThrow(BadRequestException);
+    });
+
+    // Regressão do bug real: a contagem tinha que ser recortada pelo
+    // semestre atual (servidor), não pela carreira inteira do professor.
+    it('should scope the approved-substitutions count to the current semester', async () => {
+      const classData = {
+        id: 1,
+        subjectId: 1,
+        dayOfWeek: 1,
+        startTime: '08:00',
+        endTime: '09:00',
+        available: true,
+      };
+      const professor = { id: 2, subjectId: 1, substitutionLimitPerSemester: 5 };
+
+      mockClassesRepository.findOne.mockResolvedValue(classData);
+      mockUserRepository.findOne.mockResolvedValue(professor);
+      mockRepository.findAll.mockResolvedValue([]);
+      mockDb.select.mockReturnValue(createDrizzleChainMock([]));
+      mockRepository.create.mockResolvedValue({
+        id: 1,
+        classId: 1,
+        professorId: 2,
+        status: 'PENDING',
+      });
+
+      await service.create(1, 2);
+
+      expect(mockRepository.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          professorId: 2,
+          status: 'APPROVED',
+          createdAtGte: expect.any(Date),
+        }),
+      );
+    });
+  });
+
+  describe('getSubstitutionLimitStatus', () => {
+    it('should return computed status for the professor themselves', async () => {
+      mockUserRepository.findOne.mockResolvedValue({
+        id: 2,
+        substitutionLimitPerSemester: 4,
+      });
+      mockRepository.count.mockResolvedValue(1);
+
+      const result = await service.getSubstitutionLimitStatus(2, 2);
+
+      expect(result).toEqual({
+        current: 1,
+        limit: 4,
+        percentage: 25,
+        canApply: true,
+      });
+    });
+
+    it('should default to unlimited (canApply true) when no limit is set', async () => {
+      mockUserRepository.findOne.mockResolvedValue({
+        id: 2,
+        substitutionLimitPerSemester: null,
+      });
+
+      const result = await service.getSubstitutionLimitStatus(2, 2);
+
+      expect(result).toEqual({
+        current: 0,
+        limit: null,
+        percentage: 0,
+        canApply: true,
+      });
+    });
+
+    it('should allow a manager to check another professor status', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      });
+      mockUserRepository.findOne.mockResolvedValue({
+        id: 2,
+        substitutionLimitPerSemester: 4,
+      });
+      mockRepository.count.mockResolvedValue(0);
+
+      await expect(
+        service.getSubstitutionLimitStatus(2, 1),
+      ).resolves.toBeDefined();
+    });
+
+    it('should throw ForbiddenException when a non-manager checks another professor status', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'PROFESSOR' }, schoolId: 1 }],
+      });
+
+      await expect(
+        service.getSubstitutionLimitStatus(2, 3),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException when professor does not exist', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getSubstitutionLimitStatus(2, 2),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('findAll', () => {
