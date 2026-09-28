@@ -92,8 +92,13 @@ pnpm db:studio
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-# Banco de dados
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?schema=public"
+# Banco de dados — a app conecta como papel NOSUPERUSER (o RLS é ignorado
+# por superusuário; ver "RLS" no README e scripts/setup-rls-role.sql)
+DATABASE_URL="postgresql://troca_aula_app:senha@localhost:5432/troca_aula?schema=public"
+
+# Papel dono/superusuário, usado SÓ por `pnpm db:migrate` (DDL).
+# Sem esta variável, o migrate cai de volta para DATABASE_URL.
+MIGRATION_DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?schema=public"
 
 # Autenticação JWT
 # Nome real lido pelo código (src/config/configuration.ts): SECRET, não JWT_SECRET.
@@ -104,6 +109,21 @@ SALT=10
 # Servidor
 PORT=3000
 NODE_ENV=development
+
+# Notificações por e-mail (opcional) — sem SMTP_HOST o EmailService vira no-op
+# SMTP_HOST=smtp.exemplo.com
+# SMTP_PORT=587
+# SMTP_SECURE=false
+# SMTP_USER=usuario
+# SMTP_PASS=senha
+# SMTP_FROM="Troca Aula <no-reply@exemplo.com>"
+```
+
+Antes da primeira subida, crie o papel de aplicação (idempotente):
+
+```bash
+docker exec -i postgres_container psql -U <admin> -d troca_aula \
+  -v app_password='senha' -f - < scripts/setup-rls-role.sql
 ```
 
 ### 4. Executar o Servidor
