@@ -216,6 +216,20 @@ Criação, edição e remoção são registradas em `AuditLog`.
 
 **Notificações por e-mail (opcional):** `EmailService` (nodemailer) envia e-mail em aprovação/rejeição de candidatura e em nova vaga (professores da matéria vinculados à escola). Sem `SMTP_HOST` no ambiente, vira no-op e nada quebra (ver `.env.example`).
 
+### RLS (Row-Level Security)
+
+> Ativado na rodada de segurança (ADR-006 revisado): todo request autenticado roda com uma **conexão reservada** e as GUCs de sessão `app.current_network_ids` (redes dos vínculos aprovados) e `app.is_master`; as políticas da migration `0007` são **fail-closed** (sem GUC, nenhuma linha). Isso exige um papel de banco **NOSUPERUSER** para a aplicação (RLS é ignorado por superusuário) e o papel dono para migrations:
+
+```bash
+# 1) cria/atualiza o papel de aplicação (idempotente)
+docker exec -i postgres_container psql -U <admin> -d troca_aula \
+  -v app_password='SUA_SENHA' -f - < scripts/setup-rls-role.sql
+
+# 2) .env: app conecta como o papel novo; migrations como o dono
+DATABASE_URL="postgresql://troca_aula_app:SUA_SENHA@localhost:5432/troca_aula?schema=public"
+MIGRATION_DATABASE_URL="postgresql://<dono>:<senha>@localhost:5432/troca_aula?schema=public"
+```
+
 ### Regras de Negócio
 
 1. **Criar aula vaga**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola
