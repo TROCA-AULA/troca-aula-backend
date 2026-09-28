@@ -8,6 +8,7 @@ import { ClassesService } from './classes.service';
 import { ClassesRepository } from './classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
+import { EligibilityService } from '../eligibility/eligibility.service';
 import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 
 describe('ClassesService', () => {
@@ -21,6 +22,12 @@ describe('ClassesService', () => {
     update: jest.fn(),
     remove: jest.fn(),
     getCoverageCounts: jest.fn(),
+  };
+
+  // A visibilidade em si é testada no eligibility.service.spec; aqui
+  // garantimos que a listagem DELEGA para o motor e respeita o veredito.
+  const mockEligibility = {
+    evaluateMany: jest.fn(),
   };
 
   let mockDb: {
@@ -46,11 +53,18 @@ describe('ClassesService', () => {
         // comportamento mockando mockDb.query.users.findFirst, igual ao
         // que a classe realmente chama em produção.
         TenantContextService,
+        { provide: EligibilityService, useValue: mockEligibility },
       ],
     }).compile();
 
     service = module.get<ClassesService>(ClassesService);
     repository = module.get<ClassesRepository>(ClassesRepository);
+
+    // Por padrão, tudo visível; testes específicos sobrescrevem.
+    mockEligibility.evaluateMany.mockImplementation(
+      (_professorId: number, items: unknown[]) =>
+        Promise.resolve(items.map(() => ({ visible: true }))),
+    );
   });
 
   afterEach(() => {
@@ -195,7 +209,10 @@ describe('ClassesService', () => {
       ]);
     });
 
-    it('hides a class from an unlinked school while the priority window has not elapsed', async () => {
+    // A janela/prioridade em si é responsabilidade do motor da Fase 5
+    // (eligibility.service.spec); aqui garantimos que a listagem delega e
+    // remove o que o motor marcou como invisível.
+    it('delegates visibility to the eligibility engine and drops invisible classes', async () => {
       mockDb.query.users.findFirst.mockResolvedValue({
         id: 1,
         subjectId: 5,
@@ -208,19 +225,33 @@ describe('ClassesService', () => {
           },
         ],
       });
-      mockRepository.findAll.mockResolvedValue([
-        {
-          id: 1,
-          subjectId: 5,
-          schoolId: 99, // escola diferente da que o professor tem vínculo (10)
-          createdAt: new Date(), // criada agora - dentro da janela de 4h
-          school: { priorityWindowHours: 4 },
-        },
+      const hiddenClass = {
+        id: 1,
+        subjectId: 5,
+        schoolId: 99,
+        createdAt: new Date(),
+        school: { priorityWindowHours: 4 },
+      };
+      const visibleClass = {
+        id: 2,
+        subjectId: 5,
+        schoolId: 10,
+        createdAt: new Date(),
+        school: { priorityWindowHours: 4 },
+      };
+      mockRepository.findAll.mockResolvedValue([hiddenClass, visibleClass]);
+      mockEligibility.evaluateMany.mockResolvedValue([
+        { visible: false, reason: 'PRIORITY_WINDOW' },
+        { visible: true, tierScope: 'ESCOLA' },
       ]);
 
       const result = await service.findAll({ userId: 1 });
 
-      expect(result).toEqual([]);
+      expect(mockEligibility.evaluateMany).toHaveBeenCalledWith(1, [
+        { schoolId: 99, createdAt: hiddenClass.createdAt },
+        { schoolId: 10, createdAt: visibleClass.createdAt },
+      ]);
+      expect(result).toEqual([visibleClass]);
     });
 
     it('shows a class from an unlinked school once the priority window has elapsed', async () => {

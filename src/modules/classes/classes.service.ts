@@ -15,6 +15,7 @@ import { classes, users } from '../../database/schema';
 import { notDeleted } from '../../database/soft-delete';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
+import { EligibilityService } from '../eligibility/eligibility.service';
 import {
   COVERAGE_RISK_THRESHOLDS,
   CoverageStats,
@@ -26,6 +27,7 @@ export class ClassesService {
     private readonly repository: ClassesRepository,
     private readonly drizzle: DrizzleService,
     private readonly tenantContextService: TenantContextService,
+    private readonly eligibilityService: EligibilityService,
   ) {}
   create(createClassDto: CreateClassDto) {
     return this.repository.create(createClassDto);
@@ -34,8 +36,8 @@ export class ClassesService {
   async findAll(params: GetClassDto) {
     let currentParams = params;
     let professorFilter: {
+      professorId: number;
       subjectId: number | null;
-      linkedSchoolIds: Set<number>;
     } | null = null;
 
     if (params.userId) {
@@ -71,13 +73,11 @@ export class ClassesService {
         // Não-gestor (professor com vínculo, ou usuário sem nenhum vínculo
         // ainda): mantém os params originais (não escopa a uma única
         // escola - pode ver vagas de qualquer escola em que tenha vínculo,
-        // ou de fora, sujeito ao filtro de matéria/janela abaixo), mas
-        // guarda o contexto para filtrar o resultado. linkedSchoolIds fica
-        // vazio para quem não tem vínculo nenhum - tratado como "externo"
-        // em qualquer escola, corretamente sujeito à janela de prioridade.
+        // ou de fora, sujeito à elegibilidade abaixo), mas guarda o
+        // contexto para filtrar o resultado.
         professorFilter = {
+          professorId: params.userId,
           subjectId: tenant.subjectId,
-          linkedSchoolIds: new Set(tenant.links.map((l) => l.schoolId)),
         };
       }
     }
@@ -92,37 +92,25 @@ export class ClassesService {
     // que não podia se candidatar ao tentar (EnrollmentRequestsService.create
     // já validava subjectId, mas só ali). Filtrando aqui também, a listagem
     // fica coerente com o que o professor realmente pode fazer.
-    return results.filter((classItem) => {
-      if (
-        professorFilter.subjectId !== null &&
-        classItem.subjectId !== professorFilter.subjectId
-      ) {
-        return false;
-      }
+    const subjectFiltered = results.filter(
+      (classItem) =>
+        professorFilter.subjectId === null ||
+        classItem.subjectId === professorFilter.subjectId,
+    );
 
-      // Janela de prioridade da escola (Schools.priorityWindowHours, por
-      // escola - não confundir com WorkloadPolicies, que é por rede):
-      // enquanto a janela não fechou, só professores vinculados àquela
-      // escola veem a vaga. "Vinculado" aqui é qualquer vínculo (aprovado
-      // ou não) - um vínculo pendente de aprovação ainda identifica alguém
-      // como "da escola" para fins desta regra de visibilidade, que é mais
-      // branda que controle de acesso.
-      const windowHours = classItem.school?.priorityWindowHours;
-      if (
-        windowHours &&
-        !professorFilter.linkedSchoolIds.has(classItem.schoolId)
-      ) {
-        const createdAt = classItem.createdAt
-          ? new Date(classItem.createdAt).getTime()
-          : 0;
-        const windowEndsAt = createdAt + windowHours * 60 * 60 * 1000;
-        if (Date.now() < windowEndsAt) {
-          return false;
-        }
-      }
+    // Fase 5 (Design Doc, Seção 9): visibilidade decidida pelo mesmo motor
+    // usado na candidatura (tiers por escola + interconexão de redes +
+    // interesse do professor + exclusão da escola), em lote para não fazer
+    // N queries por aula.
+    const verdicts = await this.eligibilityService.evaluateMany(
+      professorFilter.professorId,
+      subjectFiltered.map((classItem) => ({
+        schoolId: classItem.schoolId,
+        createdAt: classItem.createdAt,
+      })),
+    );
 
-      return true;
-    });
+    return subjectFiltered.filter((_, index) => verdicts[index].visible);
   }
 
   findOne(id: number) {

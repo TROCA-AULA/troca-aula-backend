@@ -14,6 +14,7 @@ import { FilterEnrollmentRequestDto } from './dto/filter-enrollment-request.dto'
 import { ClassesRepository } from '../classes/classes.repository';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
+import { EligibilityService } from '../eligibility/eligibility.service';
 
 @Injectable()
 export class EnrollmentRequestsService {
@@ -23,6 +24,7 @@ export class EnrollmentRequestsService {
     private readonly classesRepository: ClassesRepository,
     private readonly drizzle: DrizzleService,
     private readonly tenantContextService: TenantContextService,
+    private readonly eligibilityService: EligibilityService,
   ) {}
 
   async create(classId: number, professorId: number) {
@@ -56,29 +58,16 @@ export class EnrollmentRequestsService {
       );
     }
 
-    // Janela de prioridade da escola (Schools.priorityWindowHours): defesa
-    // em profundidade - a listagem (ClassesService.findAll) já esconde a
-    // vaga de professores externos durante a janela, mas isso não impede
-    // alguém de tentar se candidatar direto pelo classId. Mesma regra
-    // aplicada aqui: só bloqueia quem NÃO tem nenhum vínculo com a escola.
-    const windowHours = classData.school?.priorityWindowHours;
-    if (windowHours) {
-      const tenant = await this.tenantContextService.resolve(professorId);
-      const isLinkedToSchool = tenant.links.some(
-        (link) => link.schoolId === classData.schoolId,
-      );
-      if (!isLinkedToSchool) {
-        const createdAt = classData.createdAt
-          ? new Date(classData.createdAt).getTime()
-          : 0;
-        const windowEndsAt = createdAt + windowHours * 60 * 60 * 1000;
-        if (Date.now() < windowEndsAt) {
-          throw new ForbiddenException(
-            'Esta vaga está em janela de prioridade para professores da escola',
-          );
-        }
-      }
-    }
+    // Fase 5 (Design Doc, Seção 9): defesa em profundidade - a listagem
+    // (ClassesService.findAll) já usa o mesmo motor, mas isso não impede
+    // alguém de tentar se candidatar direto pelo classId. Inclui a
+    // mensagem específica quando o bloqueio é uma exclusão do próprio
+    // professor (Seção 9.3: "só afeta vaga nova", com aviso de como
+    // desfazer).
+    await this.eligibilityService.assertCanApply(professorId, {
+      schoolId: classData.schoolId,
+      createdAt: classData.createdAt,
+    });
 
     const hasConflict = await this.checkConflict(
       professorId,

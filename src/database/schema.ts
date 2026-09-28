@@ -392,6 +392,121 @@ export const auditLog = pgTable(
   ],
 );
 
+// Fase 5 — motor de elegibilidade geográfica (Design Doc Seção 9.3). Tudo
+// o que segue foi desenhado mas NÃO implementado no ciclo multi-tenant
+// original; as perguntas de negócio da Seção 9.5 foram resolvidas com as
+// premissas conservadoras documentadas no próprio Design Doc (revisáveis
+// sem mudança de schema) — ver docs/design-doc-evolucao-multi-tenant.md.
+//
+// Níveis de prioridade CONFIGURÁVEIS por escola (substitui o campo único
+// Schools.priorityWindowHours quando há tiers; o campo continua valendo
+// como fallback retrocompatível): lista ordenada, cada nível com seu
+// atraso em minutos a partir da criação da vaga. `scopeType`:
+//   ESCOLA                            — vinculados à própria escola
+//   REDE                              — vinculados a qualquer escola da mesma rede
+//   REDE_INTERCONECTADA_INTERESSADA   — redes interconectadas que o professor marcou interesse
+//   GERAL                             — qualquer professor do sistema
+// `restrictedNetworkIds` permite a escola restringir MAIS que a rede
+// (Seção 9.4, "o mais restritivo vence"): quando informado no nível
+// REDE_INTERCONECTADA_INTERESSADA, só vale para essas redes — que
+// precisam estar entre as interconectadas pela rede da escola.
+export const schoolPriorityTiers = pgTable(
+  'SchoolPriorityTiers',
+  {
+    id: serial('id').primaryKey(),
+    schoolId: integer('schoolId')
+      .notNull()
+      .references(() => schools.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    order: integer('order').notNull(),
+    delayMinutes: integer('delayMinutes').notNull().default(0),
+    scopeType: text('scopeType').notNull(),
+    restrictedNetworkIds: jsonb('restrictedNetworkIds').$type<number[]>(),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('SchoolPriorityTiers_schoolId_order_key').on(
+      table.schoolId,
+      table.order,
+    ),
+  ],
+);
+
+// Seção 9.3 — interconexão DIRECIONAL entre redes (Ribeirão aceitar Bomfim
+// não faz Bomfim aceitar Ribeirão de volta; cada rede declara a sua).
+export const networkInterconnections = pgTable(
+  'NetworkInterconnections',
+  {
+    id: serial('id').primaryKey(),
+    originNetworkId: integer('originNetworkId')
+      .notNull()
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    allowedNetworkId: integer('allowedNetworkId')
+      .notNull()
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('NetworkInterconnections_origin_allowed_key').on(
+      table.originNetworkId,
+      table.allowedNetworkId,
+    ),
+  ],
+);
+
+// Seção 9.3 — interesse POSITIVO do professor por municípios além do(s)
+// em que já é contratado.
+export const professorNetworkInterests = pgTable(
+  'ProfessorNetworkInterests',
+  {
+    professorId: integer('professorId')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    networkId: integer('networkId')
+      .notNull()
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.professorId, table.networkId] })],
+);
+
+// Seção 9.3 — exclusão NEGATIVA: veta uma escola específica,
+// independentemente de qualquer outro critério (vence sempre). Não afeta
+// histórico (só listagem de vagas novas e candidatura a vaga nova).
+export const professorSchoolExclusions = pgTable(
+  'ProfessorSchoolExclusions',
+  {
+    professorId: integer('professorId')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    schoolId: integer('schoolId')
+      .notNull()
+      .references(() => schools.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.professorId, table.schoolId] })],
+);
+
 // --- Relations (habilitam a Relational Query API: db.query.users.findFirst({ with: {...} })) ---
 
 export const profilesRelations = relations(profiles, ({ many }) => ({
@@ -506,6 +621,62 @@ export const auditLogRelations = relations(auditLog, ({ one }) => ({
   }),
 }));
 
+export const schoolPriorityTiersRelations = relations(
+  schoolPriorityTiers,
+  ({ one }) => ({
+    school: one(schools, {
+      fields: [schoolPriorityTiers.schoolId],
+      references: [schools.id],
+    }),
+  }),
+);
+
+export const networkInterconnectionsRelations = relations(
+  networkInterconnections,
+  ({ one }) => ({
+    originNetwork: one(networks, {
+      fields: [networkInterconnections.originNetworkId],
+      references: [networks.id],
+      relationName: 'interconnectionOrigin',
+    }),
+    allowedNetwork: one(networks, {
+      fields: [networkInterconnections.allowedNetworkId],
+      references: [networks.id],
+      relationName: 'interconnectionAllowed',
+    }),
+  }),
+);
+
+export const professorNetworkInterestsRelations = relations(
+  professorNetworkInterests,
+  ({ one }) => ({
+    professor: one(users, {
+      fields: [professorNetworkInterests.professorId],
+      references: [users.id],
+      relationName: 'networkInterests',
+    }),
+    network: one(networks, {
+      fields: [professorNetworkInterests.networkId],
+      references: [networks.id],
+    }),
+  }),
+);
+
+export const professorSchoolExclusionsRelations = relations(
+  professorSchoolExclusions,
+  ({ one }) => ({
+    professor: one(users, {
+      fields: [professorSchoolExclusions.professorId],
+      references: [users.id],
+      relationName: 'schoolExclusions',
+    }),
+    school: one(schools, {
+      fields: [professorSchoolExclusions.schoolId],
+      references: [schools.id],
+    }),
+  }),
+);
+
 export const usersProfilesSchoolsRelations = relations(
   usersProfilesSchools,
   ({ one }) => ({
@@ -594,6 +765,10 @@ export const schema = {
   teacherWorkloadRecords,
   monthlyClosingReports,
   auditLog,
+  schoolPriorityTiers,
+  networkInterconnections,
+  professorNetworkInterests,
+  professorSchoolExclusions,
   profilesRelations,
   usersRelations,
   subjectsRelations,
@@ -607,4 +782,8 @@ export const schema = {
   teacherWorkloadRecordsRelations,
   monthlyClosingReportsRelations,
   auditLogRelations,
+  schoolPriorityTiersRelations,
+  networkInterconnectionsRelations,
+  professorNetworkInterestsRelations,
+  professorSchoolExclusionsRelations,
 };

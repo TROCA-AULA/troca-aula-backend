@@ -5,6 +5,7 @@ import { UsersRepository } from '../users/users.repository';
 import { ClassesRepository } from '../classes/classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
+import { EligibilityService } from '../eligibility/eligibility.service';
 import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 import {
   NotFoundException,
@@ -30,6 +31,13 @@ describe('EnrollmentRequestsService', () => {
 
   const mockClassesRepository = {
     findOne: jest.fn(),
+  };
+
+  // O veredito de visibilidade é testado a fundo no eligibility.service.spec;
+  // aqui garantimos que a candidatura propaga o 403 dele (defesa em
+  // profundidade) quando o motor reprova.
+  const mockEligibility = {
+    assertCanApply: jest.fn(),
   };
 
   // tx simula o objeto de transação passado para db.transaction(async (tx) => ...)
@@ -61,6 +69,7 @@ describe('EnrollmentRequestsService', () => {
         { provide: DrizzleService, useValue: { db: mockDb } },
         // TenantContextService real: usa o mesmo mockDb acima (query.users.findFirst).
         TenantContextService,
+        { provide: EligibilityService, useValue: mockEligibility },
       ],
     }).compile();
 
@@ -68,6 +77,8 @@ describe('EnrollmentRequestsService', () => {
     repository = module.get<EnrollmentRequestsRepository>(
       EnrollmentRequestsRepository,
     );
+
+    mockEligibility.assertCanApply.mockResolvedValue({ visible: true });
   });
 
   afterEach(() => {
@@ -138,30 +149,34 @@ describe('EnrollmentRequestsService', () => {
       await expect(service.create(1, 2)).rejects.toThrow(ForbiddenException);
     });
 
-    // Defesa em profundidade: ClassesService.findAll já esconde a vaga da
+    // Defesa em profundidade: ClassesService.findAll já usa o mesmo motor na
     // listagem, mas isso não impede alguém de tentar se candidatar direto
-    // sabendo o classId - mesma regra aplicada aqui.
-    it('should throw ForbiddenException when professor is not linked to the school and priority window has not elapsed', async () => {
+    // sabendo o classId - a candidatura propaga o 403 do motor.
+    it('delegates the visibility gate to the eligibility engine', async () => {
       const classData = {
         id: 1,
         available: true,
         subjectId: 1,
         schoolId: 99,
         createdAt: new Date(),
-        school: { priorityWindowHours: 4 },
       };
       const professor = { id: 2, subjectId: 1 };
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
       mockRepository.findAll.mockResolvedValue([]);
-      // Professor sem nenhum vínculo com a escola 99
-      mockDb.query.users.findFirst.mockResolvedValue({ id: 2, upsUser: [] });
+      mockEligibility.assertCanApply.mockRejectedValueOnce(
+        new ForbiddenException('Você excluiu esta escola das suas vagas'),
+      );
 
       await expect(service.create(1, 2)).rejects.toThrow(ForbiddenException);
+      expect(mockEligibility.assertCanApply).toHaveBeenCalledWith(2, {
+        schoolId: 99,
+        createdAt: classData.createdAt,
+      });
     });
 
-    it('should allow the candidatura once the priority window has elapsed, even without a school link', async () => {
+    it('should allow the candidatura when the eligibility engine approves', async () => {
       const classData = {
         id: 1,
         available: true,
@@ -171,14 +186,12 @@ describe('EnrollmentRequestsService', () => {
         endTime: '09:00',
         schoolId: 99,
         createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-        school: { priorityWindowHours: 4 },
       };
       const professor = { id: 2, subjectId: 1 };
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
       mockRepository.findAll.mockResolvedValue([]);
-      mockDb.query.users.findFirst.mockResolvedValue({ id: 2, upsUser: [] });
       mockDb.select.mockReturnValue(createDrizzleChainMock([]));
       mockRepository.create.mockResolvedValue({
         id: 1,
@@ -192,7 +205,7 @@ describe('EnrollmentRequestsService', () => {
       expect(result.status).toBe('PENDING');
     });
 
-    it('should allow the candidatura within the priority window when the professor is linked to the school', async () => {
+    it('should allow the candidatura when the professor is linked to the school', async () => {
       const classData = {
         id: 1,
         available: true,
@@ -202,24 +215,12 @@ describe('EnrollmentRequestsService', () => {
         endTime: '09:00',
         schoolId: 10,
         createdAt: new Date(),
-        school: { priorityWindowHours: 4 },
       };
       const professor = { id: 2, subjectId: 1 };
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
       mockRepository.findAll.mockResolvedValue([]);
-      mockDb.query.users.findFirst.mockResolvedValue({
-        id: 2,
-        upsUser: [
-          {
-            schoolId: 10,
-            profileId: 3,
-            approvedAt: new Date(),
-            profile: { name: 'PROFESSOR' },
-          },
-        ],
-      });
       mockDb.select.mockReturnValue(createDrizzleChainMock([]));
       mockRepository.create.mockResolvedValue({
         id: 1,

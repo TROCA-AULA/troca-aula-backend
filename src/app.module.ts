@@ -17,6 +17,7 @@ import { WorkloadPoliciesModule } from './modules/workload-policies/workload-pol
 import { TeacherWorkloadRecordsModule } from './modules/teacher-workload-records/teacher-workload-records.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { MonthlyClosingReportsModule } from './modules/monthly-closing-reports/monthly-closing-reports.module';
+import { EligibilityModule } from './modules/eligibility/eligibility.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { MonthlyClosingReportsModule } from './modules/monthly-closing-reports/m
     AuditLogModule,
     TeacherWorkloadRecordsModule,
     MonthlyClosingReportsModule,
+    EligibilityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
