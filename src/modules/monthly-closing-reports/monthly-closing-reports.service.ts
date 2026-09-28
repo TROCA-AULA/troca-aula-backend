@@ -84,7 +84,11 @@ export class MonthlyClosingReportsService {
     return report;
   }
 
-  findAll(params: { userId?: number; schoolId?: number; referenceMonth?: string }) {
+  findAll(params: {
+    userId?: number;
+    schoolId?: number;
+    referenceMonth?: string;
+  }) {
     return this.repository.findAll(params);
   }
 
@@ -99,7 +103,11 @@ export class MonthlyClosingReportsService {
 
     const tenant = await this.tenantContextService.resolve(requesterId);
     if (
-      !this.tenantContextService.hasSchoolAccess(tenant, report.schoolId, MANAGER_PROFILES)
+      !this.tenantContextService.hasSchoolAccess(
+        tenant,
+        report.schoolId,
+        MANAGER_PROFILES,
+      )
     ) {
       throw new ForbiddenException(
         'Você só pode ver relatórios de fechamento próprios ou da sua escola',
@@ -118,7 +126,11 @@ export class MonthlyClosingReportsService {
       );
     }
 
-    const updated = await this.repository.updateStatus(id, 'REVIEWED', requesterId);
+    const updated = await this.repository.updateStatus(
+      id,
+      'REVIEWED',
+      requesterId,
+    );
 
     await this.auditLogRecordStatusChange(existing, updated, requesterId);
     return updated;
@@ -171,9 +183,18 @@ export class MonthlyClosingReportsService {
   // :id, sem schoolId no corpo) só checa perfil globalmente — o refinamento
   // por escola específica do relatório fica por conta do service, mesmo
   // padrão de TeacherWorkloadRecordsService.update/remove.
-  private async assertManagerOfReportSchool(schoolId: number, requesterId: number) {
+  private async assertManagerOfReportSchool(
+    schoolId: number,
+    requesterId: number,
+  ) {
     const tenant = await this.tenantContextService.resolve(requesterId);
-    if (!this.tenantContextService.hasSchoolAccess(tenant, schoolId, MANAGER_PROFILES)) {
+    if (
+      !this.tenantContextService.hasSchoolAccess(
+        tenant,
+        schoolId,
+        MANAGER_PROFILES,
+      )
+    ) {
       throw new ForbiddenException(
         'Você só pode revisar/fechar relatórios de fechamento da sua escola',
       );
@@ -188,7 +209,7 @@ export class MonthlyClosingReportsService {
   ) {
     const school = await this.schoolsRepository.findOne(before.schoolId);
     await this.auditLogService.record({
-      networkId: school!.networkId,
+      networkId: school.networkId,
       entityType: ENTITY_TYPE,
       entityId: before.id,
       changedById: requesterId,

@@ -19,10 +19,7 @@ export class SubjectRepository {
   }
 
   findAll() {
-    return this.drizzle.db
-      .select()
-      .from(subjects)
-      .where(notDeleted(subjects));
+    return this.drizzle.db.select().from(subjects).where(notDeleted(subjects));
   }
 
   async findOne(id: number) {

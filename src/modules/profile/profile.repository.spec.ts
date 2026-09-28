@@ -40,7 +40,7 @@ describe('ProfileRepository', () => {
       mockDb.insert.mockReturnValue(
         createDrizzleChainMock([{ id: 1, ...dto }]),
       );
-      const result = await repository.create(dto as any);
+      const result = await repository.create(dto);
       expect(result).toEqual({ id: 1, ...dto });
     });
   });
@@ -73,7 +73,7 @@ describe('ProfileRepository', () => {
       mockDb.update.mockReturnValue(
         createDrizzleChainMock([{ id: 1, ...dto }]),
       );
-      const result = await repository.update(1, dto as any);
+      const result = await repository.update(1, dto);
       expect(result).toEqual({ id: 1, ...dto });
     });
   });

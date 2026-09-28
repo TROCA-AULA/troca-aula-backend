@@ -211,7 +211,14 @@ describe('EnrollmentRequestsService', () => {
       mockRepository.findAll.mockResolvedValue([]);
       mockDb.query.users.findFirst.mockResolvedValue({
         id: 2,
-        upsUser: [{ schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } }],
+        upsUser: [
+          {
+            schoolId: 10,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+          },
+        ],
       });
       mockDb.select.mockReturnValue(createDrizzleChainMock([]));
       mockRepository.create.mockResolvedValue({
@@ -235,7 +242,11 @@ describe('EnrollmentRequestsService', () => {
         endTime: '09:00',
         available: true,
       };
-      const professor = { id: 2, subjectId: 1, substitutionLimitPerSemester: 2 };
+      const professor = {
+        id: 2,
+        subjectId: 1,
+        substitutionLimitPerSemester: 2,
+      };
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
@@ -257,7 +268,11 @@ describe('EnrollmentRequestsService', () => {
         endTime: '09:00',
         available: true,
       };
-      const professor = { id: 2, subjectId: 1, substitutionLimitPerSemester: 5 };
+      const professor = {
+        id: 2,
+        subjectId: 1,
+        substitutionLimitPerSemester: 5,
+      };
 
       mockClassesRepository.findOne.mockResolvedValue(classData);
       mockUserRepository.findOne.mockResolvedValue(professor);
@@ -338,17 +353,17 @@ describe('EnrollmentRequestsService', () => {
         upsUser: [{ profile: { name: 'PROFESSOR' }, schoolId: 1 }],
       });
 
-      await expect(
-        service.getSubstitutionLimitStatus(2, 3),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getSubstitutionLimitStatus(2, 3)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should throw NotFoundException when professor does not exist', async () => {
       mockUserRepository.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.getSubstitutionLimitStatus(2, 2),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getSubstitutionLimitStatus(2, 2)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -362,7 +377,7 @@ describe('EnrollmentRequestsService', () => {
       });
       mockRepository.findAll.mockResolvedValue(requests);
 
-      const result = await service.findAll({} as any, 1);
+      const result = await service.findAll({}, 1);
 
       expect(result).toEqual(requests);
     });
@@ -376,7 +391,7 @@ describe('EnrollmentRequestsService', () => {
       });
       mockRepository.findAll.mockResolvedValue(requests);
 
-      await service.findAll({} as any, 2);
+      await service.findAll({}, 2);
 
       expect(mockRepository.findAll).toHaveBeenCalledWith(
         expect.objectContaining({ professorId: 2 }),

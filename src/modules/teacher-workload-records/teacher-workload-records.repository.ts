@@ -39,8 +39,10 @@ export class TeacherWorkloadRecordsRepository {
 
   findAll(params: { schoolId?: number; userId?: number }) {
     const conditions: SQL[] = [];
-    if (params.schoolId) conditions.push(eq(teacherWorkloadRecords.schoolId, params.schoolId));
-    if (params.userId) conditions.push(eq(teacherWorkloadRecords.userId, params.userId));
+    if (params.schoolId)
+      conditions.push(eq(teacherWorkloadRecords.schoolId, params.schoolId));
+    if (params.userId)
+      conditions.push(eq(teacherWorkloadRecords.userId, params.userId));
 
     // `school: true` adicionado para a tela do professor (`GET .../me`):
     // um professor pode ter registros em mais de uma escola, e sem o nome
@@ -76,14 +78,19 @@ export class TeacherWorkloadRecordsRepository {
       eq(teacherWorkloadRecords.schoolId, schoolId),
       eq(teacherWorkloadRecords.userId, userId),
       eq(teacherWorkloadRecords.workloadTypeId, workloadTypeId),
-      or(isNull(teacherWorkloadRecords.validTo), gte(teacherWorkloadRecords.validTo, today))!,
+      or(
+        isNull(teacherWorkloadRecords.validTo),
+        gte(teacherWorkloadRecords.validTo, today),
+      )!,
     ];
     if (excludeId) {
       conditions.push(ne(teacherWorkloadRecords.id, excludeId));
     }
 
     const [row] = await this.drizzle.db
-      .select({ total: sql<string>`coalesce(sum(${teacherWorkloadRecords.hours}), 0)` })
+      .select({
+        total: sql<string>`coalesce(sum(${teacherWorkloadRecords.hours}), 0)`,
+      })
       .from(teacherWorkloadRecords)
       .where(and(...conditions));
 
@@ -92,14 +99,23 @@ export class TeacherWorkloadRecordsRepository {
 
   async update(
     id: number,
-    data: Partial<Omit<CreateTeacherWorkloadRecordData, 'userId' | 'schoolId' | 'networkId' | 'createdById'>>,
+    data: Partial<
+      Omit<
+        CreateTeacherWorkloadRecordData,
+        'userId' | 'schoolId' | 'networkId' | 'createdById'
+      >
+    >,
   ) {
     const [record] = await this.drizzle.db
       .update(teacherWorkloadRecords)
       .set({
-        ...(data.workloadTypeId !== undefined && { workloadTypeId: data.workloadTypeId }),
+        ...(data.workloadTypeId !== undefined && {
+          workloadTypeId: data.workloadTypeId,
+        }),
         ...(data.hours !== undefined && { hours: String(data.hours) }),
-        ...(data.ataOficialRef !== undefined && { ataOficialRef: data.ataOficialRef }),
+        ...(data.ataOficialRef !== undefined && {
+          ataOficialRef: data.ataOficialRef,
+        }),
         ...(data.validFrom !== undefined && {
           validFrom: data.validFrom.toISOString().slice(0, 10),
         }),

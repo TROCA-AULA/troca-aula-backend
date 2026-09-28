@@ -24,7 +24,9 @@ import { ProfileName } from '../auth/tenant/tenant-context';
 @Controller('workload-policies')
 @UseGuards(AuthGuard)
 export class WorkloadPoliciesController {
-  constructor(private readonly workloadPoliciesService: WorkloadPoliciesService) {}
+  constructor(
+    private readonly workloadPoliciesService: WorkloadPoliciesService,
+  ) {}
 
   @Post()
   @UseGuards(RolesGuard)
@@ -35,7 +37,9 @@ export class WorkloadPoliciesController {
 
   @Get()
   findAll(@Query('networkId') networkId?: string) {
-    return this.workloadPoliciesService.findAll(networkId ? +networkId : undefined);
+    return this.workloadPoliciesService.findAll(
+      networkId ? +networkId : undefined,
+    );
   }
 
   @Get(':id')

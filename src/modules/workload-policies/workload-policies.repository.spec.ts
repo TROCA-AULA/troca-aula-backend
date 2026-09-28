@@ -15,7 +15,9 @@ describe('WorkloadPoliciesRepository', () => {
         { provide: DrizzleService, useValue: { db: mockDb } },
       ],
     }).compile();
-    repository = module.get<WorkloadPoliciesRepository>(WorkloadPoliciesRepository);
+    repository = module.get<WorkloadPoliciesRepository>(
+      WorkloadPoliciesRepository,
+    );
   });
 
   it('should be defined', () => {
@@ -60,7 +62,9 @@ describe('WorkloadPoliciesRepository', () => {
     });
 
     it('should return all when no networkId provided', async () => {
-      mockDb.select.mockReturnValue(createDrizzleChainMock([{ id: 1 }, { id: 2 }]));
+      mockDb.select.mockReturnValue(
+        createDrizzleChainMock([{ id: 1 }, { id: 2 }]),
+      );
       const result = await repository.findAll();
       expect(result).toHaveLength(2);
     });

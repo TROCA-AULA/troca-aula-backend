@@ -94,7 +94,8 @@ describe('TenantContextService', () => {
     it('returns true when a link matches the school and no profile filter is given', () => {
       const tenant = {
         userId: 1,
-        isMaster: false, subjectId: null,
+        isMaster: false,
+        subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -111,7 +112,8 @@ describe('TenantContextService', () => {
     it('returns false when no link matches the school', () => {
       const tenant = {
         userId: 1,
-        isMaster: false, subjectId: null,
+        isMaster: false,
+        subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -128,7 +130,8 @@ describe('TenantContextService', () => {
     it('returns false when the link matches the school but not the allowed profiles', () => {
       const tenant = {
         userId: 1,
-        isMaster: false, subjectId: null,
+        isMaster: false,
+        subjectId: null,
         links: [
           {
             schoolId: 10,
@@ -152,7 +155,8 @@ describe('TenantContextService', () => {
     it('returns true when any link has an allowed profile', () => {
       const tenant = {
         userId: 1,
-        isMaster: false, subjectId: null,
+        isMaster: false,
+        subjectId: null,
         links: [
           {
             schoolId: 1,
@@ -169,7 +173,8 @@ describe('TenantContextService', () => {
     it('returns false when no link has an allowed profile', () => {
       const tenant = {
         userId: 1,
-        isMaster: false, subjectId: null,
+        isMaster: false,
+        subjectId: null,
         links: [
           {
             schoolId: 1,

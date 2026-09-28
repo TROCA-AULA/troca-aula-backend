@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { SchoolsRepository } from './schools.repository';
@@ -46,20 +50,13 @@ export class SchoolsService {
 
     const tenant = await this.tenantContextService.resolve(requesterId);
     if (
-      !this.tenantContextService.hasSchoolAccess(
-        tenant,
-        id,
-        MANAGER_PROFILES,
-      )
+      !this.tenantContextService.hasSchoolAccess(tenant, id, MANAGER_PROFILES)
     ) {
       throw new ForbiddenException(
         'Você só pode configurar a regra de prioridade da própria escola',
       );
     }
 
-    return this.schoolsRepository.updatePriorityWindow(
-      id,
-      priorityWindowHours,
-    );
+    return this.schoolsRepository.updatePriorityWindow(id, priorityWindowHours);
   }
 }

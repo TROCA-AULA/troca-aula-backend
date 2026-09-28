@@ -83,7 +83,10 @@ export const schools = pgTable('Schools', {
   // constraint ser aplicada (ver drizzle/migrations, arquivo desta fase).
   networkId: integer('networkId')
     .notNull()
-    .references(() => networks.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    .references(() => networks.id, {
+      onDelete: 'restrict',
+      onUpdate: 'cascade',
+    }),
   name: text('name').notNull(),
   substitutionLimitPerSemester: integer('substitutionLimitPerSemester'),
   // Regra de prioridade da própria escola (não da rede - diferente de
@@ -138,7 +141,10 @@ export const classes = pgTable('Classes', {
   id: serial('id').primaryKey(),
   schoolId: integer('schoolId')
     .notNull()
-    .references(() => schools.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    .references(() => schools.id, {
+      onDelete: 'restrict',
+      onUpdate: 'cascade',
+    }),
   subjectId: integer('subjectId')
     .notNull()
     .references(() => subjects.id, {
@@ -231,10 +237,16 @@ export const workloadPolicies = pgTable(
     id: serial('id').primaryKey(),
     networkId: integer('networkId')
       .notNull()
-      .references(() => networks.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
     workloadTypeId: integer('workloadTypeId')
       .notNull()
-      .references(() => workloadTypes.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => workloadTypes.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     maxHoursPerWeek: numeric('maxHoursPerWeek', { precision: 6, scale: 2 }),
     ataOficialRequired: boolean('ataOficialRequired').notNull().default(true),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
@@ -260,23 +272,38 @@ export const teacherWorkloadRecords = pgTable(
     id: serial('id').primaryKey(),
     userId: integer('userId')
       .notNull()
-      .references(() => users.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => users.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     schoolId: integer('schoolId')
       .notNull()
-      .references(() => schools.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => schools.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     networkId: integer('networkId')
       .notNull()
-      .references(() => networks.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => networks.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     workloadTypeId: integer('workloadTypeId')
       .notNull()
-      .references(() => workloadTypes.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => workloadTypes.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     hours: numeric('hours', { precision: 6, scale: 2 }).notNull(),
     ataOficialRef: text('ataOficialRef'),
     validFrom: date('validFrom').notNull(),
     validTo: date('validTo'),
     createdById: integer('createdById')
       .notNull()
-      .references(() => users.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => users.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
   },
   (table) => [
@@ -301,10 +328,16 @@ export const monthlyClosingReports = pgTable(
     id: serial('id').primaryKey(),
     userId: integer('userId')
       .notNull()
-      .references(() => users.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => users.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     schoolId: integer('schoolId')
       .notNull()
-      .references(() => schools.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => schools.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     referenceMonth: text('referenceMonth').notNull(),
     workloadBreakdown: jsonb('workloadBreakdown').notNull(),
     status: text('status').notNull().default('DRAFT'),
@@ -333,12 +366,18 @@ export const auditLog = pgTable(
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     networkId: integer('networkId')
       .notNull()
-      .references(() => networks.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
     entityType: text('entityType').notNull(),
     entityId: integer('entityId').notNull(),
     changedById: integer('changedById')
       .notNull()
-      .references(() => users.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+      .references(() => users.id, {
+        onDelete: 'restrict',
+        onUpdate: 'cascade',
+      }),
     before: jsonb('before'),
     after: jsonb('after'),
     justification: text('justification'),
@@ -394,16 +433,19 @@ export const workloadTypesRelations = relations(workloadTypes, ({ many }) => ({
   teacherWorkloadRecords: many(teacherWorkloadRecords),
 }));
 
-export const workloadPoliciesRelations = relations(workloadPolicies, ({ one }) => ({
-  network: one(networks, {
-    fields: [workloadPolicies.networkId],
-    references: [networks.id],
+export const workloadPoliciesRelations = relations(
+  workloadPolicies,
+  ({ one }) => ({
+    network: one(networks, {
+      fields: [workloadPolicies.networkId],
+      references: [networks.id],
+    }),
+    workloadType: one(workloadTypes, {
+      fields: [workloadPolicies.workloadTypeId],
+      references: [workloadTypes.id],
+    }),
   }),
-  workloadType: one(workloadTypes, {
-    fields: [workloadPolicies.workloadTypeId],
-    references: [workloadTypes.id],
-  }),
-}));
+);
 
 export const teacherWorkloadRecordsRelations = relations(
   teacherWorkloadRecords,

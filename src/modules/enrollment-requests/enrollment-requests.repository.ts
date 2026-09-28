@@ -47,8 +47,10 @@ export class EnrollmentRequestsRepository {
 
   private buildConditions(filters: EnrollmentRequestFilters) {
     const conditions: SQL[] = [];
-    if (filters.status) conditions.push(eq(enrollmentRequest.status, filters.status));
-    if (filters.classId) conditions.push(eq(enrollmentRequest.classId, filters.classId));
+    if (filters.status)
+      conditions.push(eq(enrollmentRequest.status, filters.status));
+    if (filters.classId)
+      conditions.push(eq(enrollmentRequest.classId, filters.classId));
     if (filters.professorId) {
       conditions.push(eq(enrollmentRequest.professorId, filters.professorId));
     }
@@ -136,9 +138,13 @@ export class EnrollmentRequestsRepository {
             name: row.professorName,
             email: row.professorEmail as string,
             subject: row.professorSubjectId
-              ? { id: row.professorSubjectId, name: row.professorSubjectName as string }
+              ? {
+                  id: row.professorSubjectId,
+                  name: row.professorSubjectName as string,
+                }
               : null,
-            totalSubstitutions: totalsByProfessor.get(row.enrollmentRequest.professorId) ?? 0,
+            totalSubstitutions:
+              totalsByProfessor.get(row.enrollmentRequest.professorId) ?? 0,
           }
         : undefined,
     }));
@@ -173,7 +179,11 @@ export class EnrollmentRequestsRepository {
     return updated;
   }
 
-  findByClassAndProfessor(classId: number, professorId: number, status?: string) {
+  findByClassAndProfessor(
+    classId: number,
+    professorId: number,
+    status?: string,
+  ) {
     const conditions = [
       eq(enrollmentRequest.classId, classId),
       eq(enrollmentRequest.professorId, professorId),

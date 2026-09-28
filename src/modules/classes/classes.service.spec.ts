@@ -87,7 +87,7 @@ describe('ClassesService', () => {
       });
       mockRepository.findAll.mockResolvedValue([]);
 
-      await service.findAll(params as any);
+      await service.findAll(params);
 
       expect(repository.findAll).toHaveBeenCalledWith({
         schoolId: 10,
@@ -115,7 +115,7 @@ describe('ClassesService', () => {
       });
       mockRepository.findAll.mockResolvedValue([]);
 
-      await service.findAll(params as any);
+      await service.findAll(params);
 
       expect(repository.findAll).toHaveBeenCalledWith(params);
     });
@@ -135,7 +135,7 @@ describe('ClassesService', () => {
       });
       mockRepository.findAll.mockResolvedValue([]);
 
-      await service.findAll(params as any);
+      await service.findAll(params);
 
       expect(repository.findAll).toHaveBeenCalledWith(params);
     });
@@ -144,7 +144,7 @@ describe('ClassesService', () => {
       const params = {};
       mockRepository.findAll.mockResolvedValue([]);
 
-      await service.findAll(params as any);
+      await service.findAll(params);
 
       expect(repository.findAll).toHaveBeenCalledWith(params);
     });
@@ -157,18 +157,41 @@ describe('ClassesService', () => {
         id: 1,
         subjectId: 5,
         upsUser: [
-          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+          {
+            schoolId: 10,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+          },
         ],
       });
       mockRepository.findAll.mockResolvedValue([
-        { id: 1, subjectId: 5, schoolId: 10, createdAt: new Date(), school: { priorityWindowHours: null } },
-        { id: 2, subjectId: 9, schoolId: 10, createdAt: new Date(), school: { priorityWindowHours: null } },
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 10,
+          createdAt: new Date(),
+          school: { priorityWindowHours: null },
+        },
+        {
+          id: 2,
+          subjectId: 9,
+          schoolId: 10,
+          createdAt: new Date(),
+          school: { priorityWindowHours: null },
+        },
       ]);
 
-      const result = await service.findAll({ userId: 1 } as any);
+      const result = await service.findAll({ userId: 1 });
 
       expect(result).toEqual([
-        { id: 1, subjectId: 5, schoolId: 10, createdAt: expect.any(Date), school: { priorityWindowHours: null } },
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 10,
+          createdAt: expect.any(Date),
+          school: { priorityWindowHours: null },
+        },
       ]);
     });
 
@@ -177,7 +200,12 @@ describe('ClassesService', () => {
         id: 1,
         subjectId: 5,
         upsUser: [
-          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+          {
+            schoolId: 10,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+          },
         ],
       });
       mockRepository.findAll.mockResolvedValue([
@@ -190,7 +218,7 @@ describe('ClassesService', () => {
         },
       ]);
 
-      const result = await service.findAll({ userId: 1 } as any);
+      const result = await service.findAll({ userId: 1 });
 
       expect(result).toEqual([]);
     });
@@ -200,7 +228,12 @@ describe('ClassesService', () => {
         id: 1,
         subjectId: 5,
         upsUser: [
-          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+          {
+            schoolId: 10,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+          },
         ],
       });
       const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
@@ -214,7 +247,7 @@ describe('ClassesService', () => {
         },
       ]);
 
-      const result = await service.findAll({ userId: 1 } as any);
+      const result = await service.findAll({ userId: 1 });
 
       expect(result).toHaveLength(1);
     });
@@ -224,7 +257,12 @@ describe('ClassesService', () => {
         id: 1,
         subjectId: 5,
         upsUser: [
-          { schoolId: 10, profileId: 3, approvedAt: new Date(), profile: { name: 'PROFESSOR' } },
+          {
+            schoolId: 10,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+          },
         ],
       });
       mockRepository.findAll.mockResolvedValue([
@@ -237,7 +275,7 @@ describe('ClassesService', () => {
         },
       ]);
 
-      const result = await service.findAll({ userId: 1 } as any);
+      const result = await service.findAll({ userId: 1 });
 
       expect(result).toHaveLength(1);
     });
@@ -384,9 +422,7 @@ describe('ClassesService', () => {
       mockDb.select.mockReturnValueOnce(
         createDrizzleChainMock([{ id: 1, enrolledById: 2 }]),
       );
-      await expect(service.unenroll(1, 99)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(service.unenroll(1, 99)).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -397,7 +433,7 @@ describe('ClassesService', () => {
         cobertas: 8,
       });
 
-      const result = await service.getCoverageStats({ schoolId: 1 } as any);
+      const result = await service.getCoverageStats({ schoolId: 1 });
 
       expect(result).toEqual({
         totalVagas: 10,
@@ -413,7 +449,7 @@ describe('ClassesService', () => {
         cobertas: 5,
       });
 
-      const result = await service.getCoverageStats({} as any);
+      const result = await service.getCoverageStats({});
 
       expect(result.nivel).toBe('medio');
       expect(result.taxaCobertura).toBe(0.5);
@@ -425,7 +461,7 @@ describe('ClassesService', () => {
         cobertas: 2,
       });
 
-      const result = await service.getCoverageStats({} as any);
+      const result = await service.getCoverageStats({});
 
       expect(result.nivel).toBe('alto');
       expect(result.taxaCobertura).toBe(0.2);
@@ -437,7 +473,7 @@ describe('ClassesService', () => {
         cobertas: 0,
       });
 
-      const result = await service.getCoverageStats({} as any);
+      const result = await service.getCoverageStats({});
 
       expect(result).toEqual({
         totalVagas: 0,

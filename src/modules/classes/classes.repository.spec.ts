@@ -44,7 +44,7 @@ describe('ClassesRepository', () => {
         finishedAt: new Date(),
       };
       mockDb.insert.mockReturnValue(createDrizzleChainMock([{ id: 1 }]));
-      const result = await repository.create(dto as any);
+      const result = await repository.create(dto);
       expect(mockDb.insert).toHaveBeenCalled();
       expect(result).toEqual({ id: 1 });
     });
@@ -56,14 +56,14 @@ describe('ClassesRepository', () => {
       const result = await repository.findAll({
         userId: 1,
         schoolId: 2,
-      } as any);
+      });
       expect(mockDb.query.classes.findMany).toHaveBeenCalled();
       expect(result).toEqual([]);
     });
 
     it('should find all classes without filters', async () => {
       mockDb.query.classes.findMany.mockResolvedValue([]);
-      const result = await repository.findAll({} as any);
+      const result = await repository.findAll({});
       expect(mockDb.query.classes.findMany).toHaveBeenCalled();
       expect(result).toEqual([]);
     });
@@ -85,7 +85,7 @@ describe('ClassesRepository', () => {
 
       const result = await repository.getCoverageCounts({
         schoolId: 1,
-      } as any);
+      });
 
       expect(mockDb.select).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ totalVagas: 10, cobertas: 6 });
@@ -96,7 +96,7 @@ describe('ClassesRepository', () => {
         .mockReturnValueOnce(createDrizzleChainMock([]))
         .mockReturnValueOnce(createDrizzleChainMock([]));
 
-      const result = await repository.getCoverageCounts({} as any);
+      const result = await repository.getCoverageCounts({});
 
       expect(result).toEqual({ totalVagas: 0, cobertas: 0 });
     });
@@ -109,7 +109,7 @@ describe('ClassesRepository', () => {
       mockDb.select.mockReturnValue(createDrizzleChainMock([{ profileId: 5 }]));
       mockDb.update.mockReturnValue(createDrizzleChainMock([{ id: 1 }]));
 
-      const result = await repository.update(1, dto as any);
+      const result = await repository.update(1, dto);
 
       expect(mockDb.query.classes.findFirst).toHaveBeenCalled();
       expect(mockDb.select).toHaveBeenCalled();
@@ -121,7 +121,7 @@ describe('ClassesRepository', () => {
       const dto = { registredById: 3 };
       mockDb.update.mockReturnValue(createDrizzleChainMock([{ id: 1 }]));
 
-      const result = await repository.update(1, dto as any);
+      const result = await repository.update(1, dto);
 
       expect(mockDb.update).toHaveBeenCalled();
       expect(result).toEqual({ id: 1 });

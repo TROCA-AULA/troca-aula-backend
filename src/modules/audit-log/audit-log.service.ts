@@ -60,7 +60,12 @@ export class AuditLogService {
 
   findByEntity(entityType: string, entityId: number) {
     return this.selectWithChangedBy()
-      .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
+      .where(
+        and(
+          eq(auditLog.entityType, entityType),
+          eq(auditLog.entityId, entityId),
+        ),
+      )
       .orderBy(desc(auditLog.changedAt));
   }
 

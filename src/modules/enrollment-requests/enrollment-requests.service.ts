@@ -158,7 +158,8 @@ export class EnrollmentRequestsService {
       limit !== null && limit > 0
         ? await this.countApprovedSubstitutions(professorId)
         : 0;
-    const percentage = limit && limit > 0 ? Math.round((current / limit) * 100) : 0;
+    const percentage =
+      limit && limit > 0 ? Math.round((current / limit) * 100) : 0;
     const canApply = limit === null || limit <= 0 || current < limit;
 
     return { current, limit, percentage, canApply };
@@ -293,7 +294,7 @@ export class EnrollmentRequestsService {
     // explícito (ver achado da auditoria em docs/design-doc-evolucao-multi-tenant.md,
     // ADR-002) — uma falha entre as duas deixava a aula "ocupada" sem
     // nenhuma candidatura de fato aprovada. Agora ambas rodam dentro da
-        // mesma transação: ou as duas persistem, ou nenhuma.
+    // mesma transação: ou as duas persistem, ou nenhuma.
     const [updated] = await this.drizzle.db.transaction(async (tx) => {
       await tx
         .update(classes)

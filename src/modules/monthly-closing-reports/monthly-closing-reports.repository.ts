@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, gte, isNull, lte, or, SQL } from 'drizzle-orm';
 import { DrizzleService } from '../../database/drizzle.service';
-import { monthlyClosingReports, teacherWorkloadRecords } from '../../database/schema';
+import {
+  monthlyClosingReports,
+  teacherWorkloadRecords,
+} from '../../database/schema';
 
 export interface WorkloadBreakdown {
   [workloadTypeCode: string]: number;
@@ -28,12 +31,20 @@ export class MonthlyClosingReportsRepository {
     });
   }
 
-  findAll(params: { userId?: number; schoolId?: number; referenceMonth?: string }) {
+  findAll(params: {
+    userId?: number;
+    schoolId?: number;
+    referenceMonth?: string;
+  }) {
     const conditions: SQL[] = [];
-    if (params.userId) conditions.push(eq(monthlyClosingReports.userId, params.userId));
-    if (params.schoolId) conditions.push(eq(monthlyClosingReports.schoolId, params.schoolId));
+    if (params.userId)
+      conditions.push(eq(monthlyClosingReports.userId, params.userId));
+    if (params.schoolId)
+      conditions.push(eq(monthlyClosingReports.schoolId, params.schoolId));
     if (params.referenceMonth)
-      conditions.push(eq(monthlyClosingReports.referenceMonth, params.referenceMonth));
+      conditions.push(
+        eq(monthlyClosingReports.referenceMonth, params.referenceMonth),
+      );
 
     return this.drizzle.db.query.monthlyClosingReports.findMany({
       where: conditions.length ? and(...conditions) : undefined,
@@ -57,15 +68,20 @@ export class MonthlyClosingReportsRepository {
     const lastDay = new Date(year, month, 0).getDate();
     const monthEnd = `${referenceMonth}-${String(lastDay).padStart(2, '0')}`;
 
-    const records = await this.drizzle.db.query.teacherWorkloadRecords.findMany({
-      where: and(
-        eq(teacherWorkloadRecords.userId, userId),
-        eq(teacherWorkloadRecords.schoolId, schoolId),
-        lte(teacherWorkloadRecords.validFrom, monthEnd),
-        or(isNull(teacherWorkloadRecords.validTo), gte(teacherWorkloadRecords.validTo, monthStart))!,
-      ),
-      with: { workloadType: true },
-    });
+    const records = await this.drizzle.db.query.teacherWorkloadRecords.findMany(
+      {
+        where: and(
+          eq(teacherWorkloadRecords.userId, userId),
+          eq(teacherWorkloadRecords.schoolId, schoolId),
+          lte(teacherWorkloadRecords.validFrom, monthEnd),
+          or(
+            isNull(teacherWorkloadRecords.validTo),
+            gte(teacherWorkloadRecords.validTo, monthStart),
+          ),
+        ),
+        with: { workloadType: true },
+      },
+    );
 
     const breakdown: WorkloadBreakdown = { total: 0 };
     for (const record of records) {

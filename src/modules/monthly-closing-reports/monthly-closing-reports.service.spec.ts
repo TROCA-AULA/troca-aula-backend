@@ -52,7 +52,11 @@ describe('MonthlyClosingReportsService', () => {
 
   describe('generate', () => {
     it('creates a new DRAFT report from the aggregated workload when none exists yet', async () => {
-      repository.aggregateWorkload.mockResolvedValue({ AULA: 20, SUPLEMENTAR: 6, total: 26 });
+      repository.aggregateWorkload.mockResolvedValue({
+        AULA: 20,
+        SUPLEMENTAR: 6,
+        total: 26,
+      });
       repository.findByKey.mockResolvedValue(undefined);
       repository.create.mockResolvedValue({
         id: 1,
@@ -61,20 +65,31 @@ describe('MonthlyClosingReportsService', () => {
         workloadBreakdown: { AULA: 20, SUPLEMENTAR: 6, total: 26 },
       } as any);
 
-      const result = await service.generate(baseDto as any, 2);
+      const result = await service.generate(baseDto, 2);
 
       expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workloadBreakdown: { AULA: 20, SUPLEMENTAR: 6, total: 26 } }),
+        expect.objectContaining({
+          workloadBreakdown: { AULA: 20, SUPLEMENTAR: 6, total: 26 },
+        }),
       );
-      expect(result).toEqual(expect.objectContaining({ id: 1, status: 'DRAFT' }));
+      expect(result).toEqual(
+        expect.objectContaining({ id: 1, status: 'DRAFT' }),
+      );
       expect(auditLogService.record).toHaveBeenCalledWith(
-        expect.objectContaining({ networkId: 1, entityType: 'MonthlyClosingReports' }),
+        expect.objectContaining({
+          networkId: 1,
+          entityType: 'MonthlyClosingReports',
+        }),
       );
     });
 
     it('regenerates (overwrites) an existing DRAFT report', async () => {
       repository.aggregateWorkload.mockResolvedValue({ AULA: 24, total: 24 });
-      repository.findByKey.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      repository.findByKey.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
       repository.updateBreakdown.mockResolvedValue({
         id: 1,
         ...baseDto,
@@ -82,18 +97,27 @@ describe('MonthlyClosingReportsService', () => {
         workloadBreakdown: { AULA: 24, total: 24 },
       } as any);
 
-      const result = await service.generate(baseDto as any, 2);
+      const result = await service.generate(baseDto, 2);
 
-      expect(repository.updateBreakdown).toHaveBeenCalledWith(1, { AULA: 24, total: 24 });
+      expect(repository.updateBreakdown).toHaveBeenCalledWith(1, {
+        AULA: 24,
+        total: 24,
+      });
       expect(repository.create).not.toHaveBeenCalled();
       expect(result).toEqual(expect.objectContaining({ id: 1 }));
     });
 
     it('rejects regenerating a report that is already REVIEWED or CLOSED', async () => {
       repository.aggregateWorkload.mockResolvedValue({ total: 0 });
-      repository.findByKey.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
+      repository.findByKey.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'CLOSED',
+      } as any);
 
-      await expect(service.generate(baseDto as any, 2)).rejects.toThrow(BadRequestException);
+      await expect(service.generate(baseDto as any, 2)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(repository.updateBreakdown).not.toHaveBeenCalled();
       expect(repository.create).not.toHaveBeenCalled();
     });
@@ -102,15 +126,32 @@ describe('MonthlyClosingReportsService', () => {
   describe('review/close transitions', () => {
     const managerContext = {
       userId: 2,
-      isMaster: false, subjectId: null,
-      links: [{ schoolId: 1, profileId: 1, profileName: ProfileName.DIRETOR, approvedAt: new Date(), networkId: null }],
+      isMaster: false,
+      subjectId: null,
+      links: [
+        {
+          schoolId: 1,
+          profileId: 1,
+          profileName: ProfileName.DIRETOR,
+          approvedAt: new Date(),
+          networkId: null,
+        },
+      ],
     };
 
     it('moves a DRAFT report to REVIEWED when the requester manages the school', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
-      repository.updateStatus.mockResolvedValue({ id: 1, ...baseDto, status: 'REVIEWED' } as any);
+      repository.updateStatus.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'REVIEWED',
+      } as any);
 
       const result = await service.review(1, 2);
 
@@ -119,7 +160,11 @@ describe('MonthlyClosingReportsService', () => {
     });
 
     it('rejects reviewing a report that is not DRAFT', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'REVIEWED' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'REVIEWED',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
 
@@ -127,8 +172,17 @@ describe('MonthlyClosingReportsService', () => {
     });
 
     it('denies review when the requester does not manage the report school', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
+      tenantContextService.resolve.mockResolvedValue({
+        userId: 2,
+        isMaster: false,
+        subjectId: null,
+        links: [],
+      });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
       await expect(service.review(1, 2)).rejects.toThrow(ForbiddenException);
@@ -136,7 +190,11 @@ describe('MonthlyClosingReportsService', () => {
     });
 
     it('rejects closing a report that skips REVIEWED (still DRAFT)', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
 
@@ -145,10 +203,18 @@ describe('MonthlyClosingReportsService', () => {
     });
 
     it('moves a REVIEWED report to CLOSED when the requester manages the school', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'REVIEWED' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'REVIEWED',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
-      repository.updateStatus.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
+      repository.updateStatus.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'CLOSED',
+      } as any);
 
       const result = await service.close(1, 2);
 
@@ -158,13 +224,28 @@ describe('MonthlyClosingReportsService', () => {
 
     // §6.3: correção explícita e rastreada de um relatório já conferido.
     it('reopens a CLOSED report back to DRAFT and records the justification in the audit log', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'CLOSED',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
-      repository.updateStatus.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
-      schoolsRepository.findOne.mockResolvedValue({ id: 1, networkId: 7 } as any);
+      repository.updateStatus.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
+      schoolsRepository.findOne.mockResolvedValue({
+        id: 1,
+        networkId: 7,
+      } as any);
 
-      const result = await service.reopen(1, 'Horas lançadas erradas em 12/03', 2);
+      const result = await service.reopen(
+        1,
+        'Horas lançadas erradas em 12/03',
+        2,
+      );
 
       expect(repository.updateStatus).toHaveBeenCalledWith(1, 'DRAFT');
       expect(auditLogService.record).toHaveBeenCalledWith(
@@ -178,44 +259,75 @@ describe('MonthlyClosingReportsService', () => {
     });
 
     it('rejects reopening a report that is already DRAFT', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
       tenantContextService.resolve.mockResolvedValue(managerContext);
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
 
-      await expect(service.reopen(1, 'motivo qualquer valido', 2)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.reopen(1, 'motivo qualquer valido', 2),
+      ).rejects.toThrow(BadRequestException);
       expect(repository.updateStatus).not.toHaveBeenCalled();
     });
 
     it('denies reopening when the requester does not manage the report school', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'CLOSED',
+      } as any);
+      tenantContextService.resolve.mockResolvedValue({
+        userId: 2,
+        isMaster: false,
+        subjectId: null,
+        links: [],
+      });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
-      await expect(service.reopen(1, 'motivo qualquer valido', 2)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.reopen(1, 'motivo qualquer valido', 2),
+      ).rejects.toThrow(ForbiddenException);
       expect(repository.updateStatus).not.toHaveBeenCalled();
     });
   });
 
   describe('findOneAsOwnerOrManager', () => {
     it('allows the report owner to read their own report without manager access', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
 
-      const result = await service.findOneAsOwnerOrManager(1, 10 /* = baseDto.userId */);
+      const result = await service.findOneAsOwnerOrManager(
+        1,
+        10 /* = baseDto.userId */,
+      );
 
       expect(result).toEqual(expect.objectContaining({ id: 1 }));
       expect(tenantContextService.resolve).not.toHaveBeenCalled();
     });
 
     it('denies a non-owner without manager access to the report school', async () => {
-      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 99, isMaster: false, subjectId: null, links: [] });
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        ...baseDto,
+        status: 'DRAFT',
+      } as any);
+      tenantContextService.resolve.mockResolvedValue({
+        userId: 99,
+        isMaster: false,
+        subjectId: null,
+        links: [],
+      });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
-      await expect(service.findOneAsOwnerOrManager(1, 99)).rejects.toThrow(ForbiddenException);
+      await expect(service.findOneAsOwnerOrManager(1, 99)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 });

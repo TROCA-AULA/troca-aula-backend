@@ -197,7 +197,11 @@ describe('AuthService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
 
-      const result = await service.changePassword(1, 'current-pass', 'new-pass-123');
+      const result = await service.changePassword(
+        1,
+        'current-pass',
+        'new-pass-123',
+      );
 
       expect(bcrypt.hash).toHaveBeenCalledWith('new-pass-123', 10);
       expect(mockUsersService.update).toHaveBeenCalledWith(1, {

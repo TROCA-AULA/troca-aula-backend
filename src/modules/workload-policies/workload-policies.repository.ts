@@ -16,7 +16,9 @@ export class WorkloadPoliciesRepository {
         networkId: dto.networkId,
         workloadTypeId: dto.workloadTypeId,
         maxHoursPerWeek:
-          dto.maxHoursPerWeek !== undefined ? String(dto.maxHoursPerWeek) : null,
+          dto.maxHoursPerWeek !== undefined
+            ? String(dto.maxHoursPerWeek)
+            : null,
         ataOficialRequired: dto.ataOficialRequired,
       })
       .returning();

@@ -48,7 +48,9 @@ describe('NetworksController', () => {
 
   describe('findAll', () => {
     it('should call service.findAll', async () => {
-      mockNetworksService.findAll.mockResolvedValue([{ id: 1, name: 'Rede X' }]);
+      mockNetworksService.findAll.mockResolvedValue([
+        { id: 1, name: 'Rede X' },
+      ]);
       const result = await controller.findAll();
       expect(service.findAll).toHaveBeenCalled();
       expect(result).toEqual([{ id: 1, name: 'Rede X' }]);

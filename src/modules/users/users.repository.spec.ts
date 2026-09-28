@@ -52,7 +52,7 @@ describe('UsersRepository', () => {
         createDrizzleChainMock([{ id: 10, ...dto }]),
       );
 
-      const result = await repository.create(dto as any);
+      const result = await repository.create(dto);
 
       expect(mockDb.insert).toHaveBeenCalled();
       expect(result).toEqual({ id: 10, ...dto });
@@ -113,10 +113,7 @@ describe('UsersRepository', () => {
         { userId: 5 },
         { userId: 7 },
       ]);
-      mockDb.query.users.findMany.mockResolvedValue([
-        { id: 5 },
-        { id: 7 },
-      ]);
+      mockDb.query.users.findMany.mockResolvedValue([{ id: 5 }, { id: 7 }]);
 
       const result = await repository.findAll({ schoolId: 1, profileId: 3 });
 
@@ -159,7 +156,7 @@ describe('UsersRepository', () => {
       mockDb.update.mockReturnValue(
         createDrizzleChainMock([{ id: 1, ...dto }]),
       );
-      const result = await repository.update(1, dto as any);
+      const result = await repository.update(1, dto);
       expect(result).toEqual({ id: 1, ...dto });
     });
   });

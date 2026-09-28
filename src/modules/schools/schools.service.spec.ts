@@ -111,10 +111,20 @@ describe('SchoolsService', () => {
         userId: 10,
         isMaster: false,
         subjectId: null,
-        links: [{ schoolId: 1, profileId: 1, profileName: 'DIRETOR', approvedAt: new Date() }],
+        links: [
+          {
+            schoolId: 1,
+            profileId: 1,
+            profileName: 'DIRETOR',
+            approvedAt: new Date(),
+          },
+        ],
       });
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
-      mockRepository.updatePriorityWindow.mockResolvedValue({ id: 1, priorityWindowHours: 4 });
+      mockRepository.updatePriorityWindow.mockResolvedValue({
+        id: 1,
+        priorityWindowHours: 4,
+      });
 
       const result = await service.updatePriorityWindow(1, 4, 10);
 
@@ -132,18 +142,18 @@ describe('SchoolsService', () => {
       });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
-      await expect(service.updatePriorityWindow(1, 4, 99)).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.updatePriorityWindow(1, 4, 99),
+      ).rejects.toBeInstanceOf(ForbiddenException);
       expect(repository.updatePriorityWindow).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the school does not exist', async () => {
       mockRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.updatePriorityWindow(999, 4, 10)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.updatePriorityWindow(999, 4, 10),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(tenantContextService.resolve).not.toHaveBeenCalled();
     });
   });

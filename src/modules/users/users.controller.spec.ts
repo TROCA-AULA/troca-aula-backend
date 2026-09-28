@@ -96,7 +96,7 @@ describe('UsersController', () => {
   describe('findAll', () => {
     it('should call service.findAll without filter', async () => {
       mockUsersService.findAll.mockResolvedValue([]);
-      const result = await controller.findAll({} as any);
+      const result = await controller.findAll({});
       expect(service.findAll).toHaveBeenCalledWith({
         schoolId: undefined,
         profileId: undefined,
@@ -106,7 +106,7 @@ describe('UsersController', () => {
 
     it('should forward schoolId/profileId query filters', async () => {
       mockUsersService.findAll.mockResolvedValue([]);
-      await controller.findAll({ schoolId: 1, profileId: 3 } as any);
+      await controller.findAll({ schoolId: 1, profileId: 3 });
       expect(service.findAll).toHaveBeenCalledWith({
         schoolId: 1,
         profileId: 3,
@@ -122,7 +122,7 @@ describe('UsersController', () => {
         { id: 2, email: 'b@test.com', password: '$2b$10$hash2' },
       ]);
 
-      const result = await controller.findAll({} as any);
+      const result = await controller.findAll({});
 
       expect(result).toEqual([
         { id: 1, email: 'a@test.com' },
@@ -137,8 +137,8 @@ describe('UsersController', () => {
       const req = { user: { id: 9 } };
       const result = await controller.assignProfile(
         '5',
-        { profileId: 1, schoolId: 2 } as any,
-        req as any,
+        { profileId: 1, schoolId: 2 },
+        req,
       );
       expect(service.assignProfile).toHaveBeenCalledWith(5, 1, 2, 9);
       expect(result).toEqual({ userId: 5 });
@@ -151,7 +151,7 @@ describe('UsersController', () => {
       const result = await controller.unassignProfile('5', {
         profileId: 1,
         schoolId: 2,
-      } as any);
+      });
       expect(service.unassignProfile).toHaveBeenCalledWith(5, 1, 2);
       expect(result).toEqual({ userId: 5 });
     });
@@ -195,7 +195,7 @@ describe('UsersController', () => {
         id: 1,
         password: '$2b$10$hash',
       });
-      const result = await controller.update('1', {} as any);
+      const result = await controller.update('1', {});
       expect(result).toEqual({ id: 1 });
     });
   });

@@ -30,7 +30,14 @@ describe('TeacherWorkloadRecordsService', () => {
         TeacherWorkloadRecordsService,
         {
           provide: TeacherWorkloadRecordsRepository,
-          useValue: { create: jest.fn(), sumActiveHours: jest.fn(), findOne: jest.fn(), update: jest.fn(), remove: jest.fn(), findAll: jest.fn() },
+          useValue: {
+            create: jest.fn(),
+            sumActiveHours: jest.fn(),
+            findOne: jest.fn(),
+            update: jest.fn(),
+            remove: jest.fn(),
+            findAll: jest.fn(),
+          },
         },
         { provide: SchoolsRepository, useValue: { findOne: jest.fn() } },
         {
@@ -38,7 +45,10 @@ describe('TeacherWorkloadRecordsService', () => {
           useValue: { findByNetworkAndType: jest.fn() },
         },
         { provide: AuditLogService, useValue: { record: jest.fn() } },
-        { provide: TenantContextService, useValue: { resolve: jest.fn(), hasSchoolAccess: jest.fn() } },
+        {
+          provide: TenantContextService,
+          useValue: { resolve: jest.fn(), hasSchoolAccess: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -63,12 +73,15 @@ describe('TeacherWorkloadRecordsService', () => {
       repository.sumActiveHours.mockResolvedValue(3); // já tem 3h vigentes
       repository.create.mockResolvedValue({ id: 99, ...baseDto } as any);
 
-      const result = await service.create(baseDto as any, 2);
+      const result = await service.create(baseDto, 2);
 
       // 3h existentes + 5h novas = 8h <= 10h do limite -> não deve lançar
       expect(result).toEqual(expect.objectContaining({ id: 99 }));
       expect(auditLogService.record).toHaveBeenCalledWith(
-        expect.objectContaining({ networkId: 1, entityType: 'TeacherWorkloadRecords' }),
+        expect.objectContaining({
+          networkId: 1,
+          entityType: 'TeacherWorkloadRecords',
+        }),
       );
     });
 
@@ -94,7 +107,7 @@ describe('TeacherWorkloadRecordsService', () => {
       );
       repository.create.mockResolvedValue({ id: 100, ...baseDto } as any);
 
-      const result = await service.create(baseDto as any, 2);
+      const result = await service.create(baseDto, 2);
 
       expect(repository.sumActiveHours).not.toHaveBeenCalled();
       expect(result).toEqual(expect.objectContaining({ id: 100 }));
@@ -111,7 +124,12 @@ describe('TeacherWorkloadRecordsService', () => {
         workloadTypeId: 4,
         hours: '5',
       } as any);
-      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
+      tenantContextService.resolve.mockResolvedValue({
+        userId: 2,
+        isMaster: false,
+        subjectId: null,
+        links: [],
+      });
       tenantContextService.hasSchoolAccess.mockReturnValue(false);
 
       await expect(service.remove(5, 2)).rejects.toThrow(ForbiddenException);
@@ -129,8 +147,17 @@ describe('TeacherWorkloadRecordsService', () => {
       } as any);
       tenantContextService.resolve.mockResolvedValue({
         userId: 2,
-        isMaster: true, subjectId: null,
-        links: [{ schoolId: 1, profileId: 4, profileName: ProfileName.MASTER, approvedAt: new Date(), networkId: null }],
+        isMaster: true,
+        subjectId: null,
+        links: [
+          {
+            schoolId: 1,
+            profileId: 4,
+            profileName: ProfileName.MASTER,
+            approvedAt: new Date(),
+            networkId: null,
+          },
+        ],
       });
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
       repository.remove.mockResolvedValue({ id: 5 } as any);

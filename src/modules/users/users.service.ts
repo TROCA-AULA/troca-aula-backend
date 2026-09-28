@@ -71,7 +71,9 @@ export class UsersService {
     // TenantGuard, mas sem schoolId no corpo da rota).
     const tenant = await this.tenantContextService.resolve(requesterId);
     const managerSchoolIds = tenant.links
-      .filter((link) => (MANAGER_PROFILES as string[]).includes(link.profileName))
+      .filter((link) =>
+        (MANAGER_PROFILES as string[]).includes(link.profileName),
+      )
       .map((link) => link.schoolId);
     const targetSchoolIds = (target.upsUser ?? [])
       .filter((link) => link.approvedAt)

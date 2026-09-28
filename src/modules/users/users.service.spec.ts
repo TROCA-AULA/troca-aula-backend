@@ -50,9 +50,8 @@ describe('UsersService', () => {
 
     service = module.get<UsersService>(UsersService);
     repository = module.get<UsersRepository>(UsersRepository);
-    tenantContextService = module.get<TenantContextService>(
-      TenantContextService,
-    );
+    tenantContextService =
+      module.get<TenantContextService>(TenantContextService);
   });
 
   afterEach(() => jest.clearAllMocks());

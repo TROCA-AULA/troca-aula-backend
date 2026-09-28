@@ -11,7 +11,10 @@ describe('AuditLogService', () => {
     mockDb = { insert: jest.fn(), select: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [AuditLogService, { provide: DrizzleService, useValue: { db: mockDb } }],
+      providers: [
+        AuditLogService,
+        { provide: DrizzleService, useValue: { db: mockDb } },
+      ],
     }).compile();
 
     service = module.get<AuditLogService>(AuditLogService);

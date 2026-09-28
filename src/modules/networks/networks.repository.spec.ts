@@ -27,7 +27,9 @@ describe('NetworksRepository', () => {
   describe('create', () => {
     it('should create a network', async () => {
       const dto = { name: 'Rede Municipal X' };
-      mockDb.insert.mockReturnValue(createDrizzleChainMock([{ id: 1, ...dto }]));
+      mockDb.insert.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, ...dto }]),
+      );
       const result = await repository.create(dto);
       expect(result).toEqual({ id: 1, ...dto });
     });
@@ -62,7 +64,9 @@ describe('NetworksRepository', () => {
   describe('update', () => {
     it('should update a network', async () => {
       const dto = { name: 'Rede Renomeada' };
-      mockDb.update.mockReturnValue(createDrizzleChainMock([{ id: 1, ...dto }]));
+      mockDb.update.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, ...dto }]),
+      );
       const result = await repository.update(1, dto);
       expect(result).toEqual({ id: 1, ...dto });
     });

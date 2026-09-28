@@ -86,7 +86,9 @@ describe('SubjectRepository', () => {
   describe('remove', () => {
     it('should soft-delete a subject (set deletedAt)', async () => {
       mockDb.update.mockReturnValue(
-        createDrizzleChainMock([{ id: 1, name: 'Math', deletedAt: new Date() }]),
+        createDrizzleChainMock([
+          { id: 1, name: 'Math', deletedAt: new Date() },
+        ]),
       );
       const result = await repository.remove(1);
       expect(mockDb.update).toHaveBeenCalled();

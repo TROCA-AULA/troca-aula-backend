@@ -11,8 +11,6 @@ import { classes, schools, subjects, users } from './schema';
 // genérico.
 export const SOFT_DELETE_TABLES = [users, subjects, schools, classes] as const;
 
-export function notDeleted(
-  table: (typeof SOFT_DELETE_TABLES)[number],
-): SQL {
+export function notDeleted(table: (typeof SOFT_DELETE_TABLES)[number]): SQL {
   return isNull(table.deletedAt);
 }

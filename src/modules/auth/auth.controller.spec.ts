@@ -57,7 +57,7 @@ describe('AuthController', () => {
 
       const result = await controller.changePassword(dto, {
         user: { id: 7 },
-      } as any);
+      });
 
       expect(service.changePassword).toHaveBeenCalledWith(
         7,

@@ -94,8 +94,8 @@ export class ClassesService {
     // fica coerente com o que o professor realmente pode fazer.
     return results.filter((classItem) => {
       if (
-        professorFilter!.subjectId !== null &&
-        classItem.subjectId !== professorFilter!.subjectId
+        professorFilter.subjectId !== null &&
+        classItem.subjectId !== professorFilter.subjectId
       ) {
         return false;
       }
@@ -108,7 +108,10 @@ export class ClassesService {
       // como "da escola" para fins desta regra de visibilidade, que é mais
       // branda que controle de acesso.
       const windowHours = classItem.school?.priorityWindowHours;
-      if (windowHours && !professorFilter!.linkedSchoolIds.has(classItem.schoolId)) {
+      if (
+        windowHours &&
+        !professorFilter.linkedSchoolIds.has(classItem.schoolId)
+      ) {
         const createdAt = classItem.createdAt
           ? new Date(classItem.createdAt).getTime()
           : 0;
@@ -242,9 +245,7 @@ export class ClassesService {
   // Fase 4 (COULD) do Design Doc — indicador estatístico simples (não
   // preditivo): taxa histórica de cobertura de aulas vagas no recorte
   // informado. Cortes de nível documentados em coverage-stats.interface.ts.
-  async getCoverageStats(
-    params: GetCoverageStatsDto,
-  ): Promise<CoverageStats> {
+  async getCoverageStats(params: GetCoverageStatsDto): Promise<CoverageStats> {
     const { totalVagas, cobertas } =
       await this.repository.getCoverageCounts(params);
 
