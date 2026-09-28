@@ -27,6 +27,21 @@ interface AuthenticatedRequest {
   user?: { id: number };
 }
 
+// Achado de segurança real (não era o objetivo original desta mudança):
+// toda rota deste controller devolvia a linha crua de Users, hash bcrypt de
+// `password` incluído - qualquer usuário autenticado (PROFESSOR incluído,
+// só exige AuthGuard) que chamasse GET /users via o hash de QUALQUER outro
+// usuário do sistema. bcrypt não é "seguro o bastante pra vazar" - um hash
+// exposto habilita ataque offline de força bruta/dicionário sem precisar
+// de mais nada. Corrigido removendo `password` de toda resposta que sai
+// deste controller para o cliente.
+function sanitizeUser<T extends { password?: unknown }>(
+  user: T,
+): Omit<T, 'password'> {
+  const { password: _password, ...rest } = user;
+  return rest;
+}
+
 @Controller('users')
 export class UsersController {
   constructor(
@@ -40,7 +55,11 @@ export class UsersController {
 
     const hash = await bcrypt.hash(createUserDto.password, saltHounds);
 
-    return this.usersService.create({ ...createUserDto, password: hash });
+    const created = await this.usersService.create({
+      ...createUserDto,
+      password: hash,
+    });
+    return sanitizeUser(created);
   }
 
   // schoolId vem do corpo (AssignProfileDto) — o TenantGuard exige que quem
@@ -88,28 +107,32 @@ export class UsersController {
   // fica registrado como possível endurecimento futuro (ver docs).
   @Get()
   @UseGuards(AuthGuard)
-  findAll(@Query() query: FindUsersQueryDto) {
-    return this.usersService.findAll({
+  async findAll(@Query() query: FindUsersQueryDto) {
+    const users = await this.usersService.findAll({
       schoolId: query.schoolId,
       profileId: query.profileId,
     });
+    return users.map(sanitizeUser);
   }
 
   @Get(':id')
   @UseGuards(AuthGuard)
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
+  async findOne(@Param('id') id: string) {
+    const user = await this.usersService.findOne(+id);
+    return user ? sanitizeUser(user) : user;
   }
 
   @Patch(':id')
   @UseGuards(AuthGuard)
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(+id, updateUserDto);
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    const updated = await this.usersService.update(+id, updateUserDto);
+    return sanitizeUser(updated);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard)
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
+  async remove(@Param('id') id: string) {
+    const removed = await this.usersService.remove(+id);
+    return sanitizeUser(removed);
   }
 }

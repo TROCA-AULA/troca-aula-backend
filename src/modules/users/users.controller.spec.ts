@@ -75,6 +75,22 @@ describe('UsersController', () => {
       );
       expect(result).toEqual({ id: 1, email: dto.email });
     });
+
+    // Achado de segurança real: a resposta continha o hash bcrypt de
+    // password. Qualquer chamador desta rota (pública) recebia o hash de
+    // volta, sem necessidade nenhuma.
+    it('should never return the password hash in the response', async () => {
+      const dto = { email: 'test@test.com', password: 'password123' } as any;
+      mockUsersService.create.mockResolvedValue({
+        id: 1,
+        email: dto.email,
+        password: '$2b$10$hashedvalue',
+      });
+
+      const result = await controller.create(dto);
+
+      expect(result).not.toHaveProperty('password');
+    });
   });
 
   describe('findAll', () => {
@@ -95,6 +111,23 @@ describe('UsersController', () => {
         schoolId: 1,
         profileId: 3,
       });
+    });
+
+    // Achado de segurança real: qualquer usuário autenticado (só exige
+    // AuthGuard, nenhum perfil específico) podia ver o hash bcrypt de
+    // TODOS os usuários do sistema via esta rota.
+    it('should strip the password hash from every user in the list', async () => {
+      mockUsersService.findAll.mockResolvedValue([
+        { id: 1, email: 'a@test.com', password: '$2b$10$hash1' },
+        { id: 2, email: 'b@test.com', password: '$2b$10$hash2' },
+      ]);
+
+      const result = await controller.findAll({} as any);
+
+      expect(result).toEqual([
+        { id: 1, email: 'a@test.com' },
+        { id: 2, email: 'b@test.com' },
+      ]);
     });
   });
 
@@ -131,6 +164,21 @@ describe('UsersController', () => {
       expect(service.findOne).toHaveBeenCalledWith(1);
       expect(result).toEqual({ id: 1 });
     });
+
+    it('should strip the password hash', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: '$2b$10$hash',
+      });
+      const result = await controller.findOne('1');
+      expect(result).toEqual({ id: 1 });
+    });
+
+    it('should return null as-is when the user does not exist', async () => {
+      mockUsersService.findOne.mockResolvedValue(null);
+      const result = await controller.findOne('999');
+      expect(result).toBeNull();
+    });
   });
 
   describe('update', () => {
@@ -141,6 +189,15 @@ describe('UsersController', () => {
       expect(service.update).toHaveBeenCalledWith(1, dto);
       expect(result).toEqual({ id: 1 });
     });
+
+    it('should strip the password hash', async () => {
+      mockUsersService.update.mockResolvedValue({
+        id: 1,
+        password: '$2b$10$hash',
+      });
+      const result = await controller.update('1', {} as any);
+      expect(result).toEqual({ id: 1 });
+    });
   });
 
   describe('remove', () => {
@@ -148,6 +205,15 @@ describe('UsersController', () => {
       mockUsersService.remove.mockResolvedValue({ id: 1 });
       const result = await controller.remove('1');
       expect(service.remove).toHaveBeenCalledWith(1);
+      expect(result).toEqual({ id: 1 });
+    });
+
+    it('should strip the password hash', async () => {
+      mockUsersService.remove.mockResolvedValue({
+        id: 1,
+        password: '$2b$10$hash',
+      });
+      const result = await controller.remove('1');
       expect(result).toEqual({ id: 1 });
     });
   });
