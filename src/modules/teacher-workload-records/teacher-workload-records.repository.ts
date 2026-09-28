@@ -42,9 +42,14 @@ export class TeacherWorkloadRecordsRepository {
     if (params.schoolId) conditions.push(eq(teacherWorkloadRecords.schoolId, params.schoolId));
     if (params.userId) conditions.push(eq(teacherWorkloadRecords.userId, params.userId));
 
+    // `school: true` adicionado para a tela do professor (`GET .../me`):
+    // um professor pode ter registros em mais de uma escola, e sem o nome
+    // aqui a tela só teria `schoolId` cru. Sem risco de vazar dado sensível
+    // (Schools não tem coluna de senha, ao contrário de Users - ver o
+    // achado de segurança em ClassesRepository).
     return this.drizzle.db.query.teacherWorkloadRecords.findMany({
       where: conditions.length ? and(...conditions) : undefined,
-      with: { workloadType: true },
+      with: { workloadType: true, school: true },
       orderBy: (fields, { desc }) => [desc(fields.validFrom)],
     });
   }
