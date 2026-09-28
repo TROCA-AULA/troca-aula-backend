@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { MonthlyClosingReportsService } from './monthly-closing-reports.service';
 import { GenerateMonthlyClosingReportDto } from './dto/generate-monthly-closing-report.dto';
+import { ReopenMonthlyClosingReportDto } from './dto/reopen-monthly-closing-report.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -61,5 +62,18 @@ export class MonthlyClosingReportsController {
   @Roles(...MANAGER_PROFILES)
   close(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.service.close(+id, req.user.id);
+  }
+
+  // Correção explícita de relatório já conferido/fechado (§6.3) — exige
+  // justificativa, que fica no AuditLog.
+  @Patch(':id/reopen')
+  @UseGuards(RolesGuard)
+  @Roles(...MANAGER_PROFILES)
+  reopen(
+    @Param('id') id: string,
+    @Body() dto: ReopenMonthlyClosingReportDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.service.reopen(+id, dto.justification, req.user.id);
   }
 }

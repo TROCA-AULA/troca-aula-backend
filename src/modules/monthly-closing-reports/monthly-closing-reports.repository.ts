@@ -107,17 +107,20 @@ export class MonthlyClosingReportsRepository {
 
   async updateStatus(
     id: number,
-    status: 'REVIEWED' | 'CLOSED',
+    status: 'DRAFT' | 'REVIEWED' | 'CLOSED',
     reviewedById?: number,
   ) {
     const [report] = await this.drizzle.db
       .update(monthlyClosingReports)
       .set({
         status,
-        ...(reviewedById !== undefined && {
-          reviewedById,
-          reviewedAt: new Date(),
-        }),
+        // Reabrir (DRAFT) limpa a revisão anterior — o relatório volta a ser
+        // um rascunho editável; rever/fechar de novo registra nova revisão.
+        ...(status === 'DRAFT'
+          ? { reviewedById: null, reviewedAt: null }
+          : reviewedById !== undefined
+            ? { reviewedById, reviewedAt: new Date() }
+            : {}),
       })
       .where(eq(monthlyClosingReports.id, id))
       .returning();

@@ -155,6 +155,49 @@ describe('MonthlyClosingReportsService', () => {
       expect(repository.updateStatus).toHaveBeenCalledWith(1, 'CLOSED');
       expect(result).toEqual(expect.objectContaining({ status: 'CLOSED' }));
     });
+
+    // §6.3: correção explícita e rastreada de um relatório já conferido.
+    it('reopens a CLOSED report back to DRAFT and records the justification in the audit log', async () => {
+      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
+      tenantContextService.resolve.mockResolvedValue(managerContext);
+      tenantContextService.hasSchoolAccess.mockReturnValue(true);
+      repository.updateStatus.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      schoolsRepository.findOne.mockResolvedValue({ id: 1, networkId: 7 } as any);
+
+      const result = await service.reopen(1, 'Horas lançadas erradas em 12/03', 2);
+
+      expect(repository.updateStatus).toHaveBeenCalledWith(1, 'DRAFT');
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 1,
+          networkId: 7,
+          justification: 'Horas lançadas erradas em 12/03',
+        }),
+      );
+      expect(result).toEqual(expect.objectContaining({ status: 'DRAFT' }));
+    });
+
+    it('rejects reopening a report that is already DRAFT', async () => {
+      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'DRAFT' } as any);
+      tenantContextService.resolve.mockResolvedValue(managerContext);
+      tenantContextService.hasSchoolAccess.mockReturnValue(true);
+
+      await expect(service.reopen(1, 'motivo qualquer valido', 2)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(repository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('denies reopening when the requester does not manage the report school', async () => {
+      repository.findOne.mockResolvedValue({ id: 1, ...baseDto, status: 'CLOSED' } as any);
+      tenantContextService.resolve.mockResolvedValue({ userId: 2, isMaster: false, subjectId: null, links: [] });
+      tenantContextService.hasSchoolAccess.mockReturnValue(false);
+
+      await expect(service.reopen(1, 'motivo qualquer valido', 2)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(repository.updateStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe('findOneAsOwnerOrManager', () => {

@@ -142,6 +142,31 @@ export class MonthlyClosingReportsService {
     return updated;
   }
 
+  // REVIEWED/CLOSED -> DRAFT, com justificativa obrigatória (DTO): o §6.3 da
+  // proposta pede que ajuste em relatório já conferido passe por um fluxo de
+  // correção explícita e rastreado, nunca por sobrescrita silenciosa. Depois
+  // de reaberto, `generate()` volta a aceitar regeneração (só DRAFT), e o
+  // ciclo review -> close tem que ser refeito.
+  async reopen(id: number, justification: string, requesterId: number) {
+    const existing = await this.findOne(id);
+    await this.assertManagerOfReportSchool(existing.schoolId, requesterId);
+    if (existing.status === 'DRAFT') {
+      throw new BadRequestException(
+        'Este relatório já está em DRAFT — regere/edite diretamente',
+      );
+    }
+
+    const updated = await this.repository.updateStatus(id, 'DRAFT');
+
+    await this.auditLogRecordStatusChange(
+      existing,
+      updated,
+      requesterId,
+      justification,
+    );
+    return updated;
+  }
+
   // RolesGuard sozinho (sem TenantGuard, já que review/close são só por
   // :id, sem schoolId no corpo) só checa perfil globalmente — o refinamento
   // por escola específica do relatório fica por conta do service, mesmo
@@ -159,6 +184,7 @@ export class MonthlyClosingReportsService {
     before: { schoolId: number; id: number },
     after: unknown,
     requesterId: number,
+    justification?: string,
   ) {
     const school = await this.schoolsRepository.findOne(before.schoolId);
     await this.auditLogService.record({
@@ -168,6 +194,7 @@ export class MonthlyClosingReportsService {
       changedById: requesterId,
       before,
       after,
+      ...(justification !== undefined && { justification }),
     });
   }
 }
