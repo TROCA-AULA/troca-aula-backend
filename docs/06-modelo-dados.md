@@ -1,8 +1,10 @@
 # Modelo de Dados
 
+> **Atualizado (2026-09):** o banco é gerenciado pelo **Drizzle ORM** (migração concluída na Fase 1 — ver Design Doc, ADR-002; `prisma/` fica apenas como referência histórica). A fonte de verdade é [`src/database/schema.ts`](../src/database/schema.ts); as migrations ficam em [`drizzle/migrations/`](../drizzle/migrations).
+
 ## Visao Geral do Banco
 
-O banco de dados PostgreSQL e gerenciado pelo **Prisma ORM** e contem todas as entidades do sistema Troca Aula.
+O banco de dados PostgreSQL contém as 13 tabelas do sistema Troca Aula multi-tenant: as 7 originais (Users, Profiles, Schools, Subjects, Classes, EnrollmentRequest, UsersProfilesSchools) e as 6 da evolução multi-tenant (Networks, WorkloadTypes, WorkloadPolicies, TeacherWorkloadRecords, MonthlyClosingReports, AuditLog).
 
 ---
 
@@ -13,526 +15,363 @@ graph TB
     subgraph "Camada de Aplicação"
         APP[NestJS API]
     end
-    
+
     subgraph "Camada de Persistência"
-        PRISMA[Prisma Client]
-        MIGRATE[Prisma Migrate]
+        DRIZZLE[Drizzle ORM<br/>Relational Query API]
+        MIGRATE[drizzle-kit<br/>migrations]
     end
-    
+
     subgraph "PostgreSQL"
-        POOL[Connection Pool]
+        DRIVER[postgres.js<br/>connection pool]
         MAIN[(Banco Principal)]
-        REPLICA[(Replicado<br/>Somente Leitura)]
     end
-    
+
     subgraph "Administração"
-        PGADMIN[pgAdmin]
-        CLI[CLI Prisma]
+        DSTUDIO[Drizzle Studio]
+        CLI[pnpm db:*]
     end
-    
-    APP --> PRISMA
-    PRISMA --> POOL
-    POOL --> MAIN
-    MAIN -->|Replicacao| REPLICA
+
+    APP --> DRIZZLE
+    DRIZZLE --> DRIVER
+    DRIVER --> MAIN
     MIGRATE --> MAIN
-    CLI --> PRISMA
-    PGADMIN --> MAIN
+    DSTUDIO --> MAIN
+    CLI --> MIGRATE
 ```
 
-### Modelo Relacional Completo
+---
+
+## Modelo Relacional (visão geral)
 
 ```mermaid
 erDiagram
+    NETWORKS ||--o{ SCHOOLS : "rede"
+    SCHOOLS ||--o{ USERS_PROFILES_SCHOOLS : "vinculos"
     USERS ||--o{ USERS_PROFILES_SCHOOLS : "vinculos"
-    USERS ||--o{ CLASSES_CREATED : "criadas_por"
-    USERS ||--o{ CLASSES_APPROVED : "aprovadas_por"
-    USERS ||--o{ ENROLLMENT_REQUESTS : "candidaturas"
-    SCHOOLS ||--o{ USERS_PROFILES_SCHOOLS : "usuarios"
+    PROFILES ||--o{ USERS_PROFILES_SCHOOLS : "perfil"
     SCHOOLS ||--o{ CLASSES : "aulas"
-    PROFILES ||--o{ USERS_PROFILES_SCHOOLS : "perfis"
-    SUBJECTS ||--o{ CLASSES : "disciplinas"
-    SUBJECTS ||--o{ USERS : "professor_especialidade"
-    CLASSES ||--o{ ENROLLMENT_REQUESTS : "inscricoes"
-    
-    USERS {
-        int id PK
-        string name
-        string email UK
-        string phone
-        string passwordHash
-        int subjectId FK
-        datetime createdAt
-        datetime deletedAt
-    }
-    
-    SCHOOLS {
-        int id PK
-        string name
-        datetime createdAt
-        datetime deletedAt
-    }
-    
-    PROFILES {
-        int id PK
-        string name
-        string description
-    }
-    
-    SUBJECTS {
-        int id PK
-        string name
-        string description
-    }
-    
-    CLASSES {
-        int id PK
-        int schoolId FK
-        int subjectId FK
-        int createdById FK
-        int approvedById FK
-        int dayOfWeek
-        string startTime
-        string endTime
-        boolean isActive
-        datetime createdAt
-        datetime deletedAt
-    }
-    
-    ENROLLMENT_REQUESTS {
-        int id PK
-        int classId FK
-        int userId FK
-        enum status
-        datetime enrolledAt
-    }
-    
-    USERS_PROFILES_SCHOOLS {
-        int userId FK
-        int profileId FK
-        int schoolId FK
-        datetime approvedAt
-    }
-```
-
-### Diagrama de Dependencies de Entidades
-
-```mermaid
-graph TD
-    subgraph "Entidades Principais"
-        USER[User]
-        SCHOOL[School]
-        SUBJECT[Subject]
-    end
-    
-    subgraph "Entidades de Associacao"
-        UPS[UsersProfilesSchools]
-        CLASS[Class]
-        ENROLL[EnrollmentRequest]
-    end
-    
-    subgraph "Entidades de Suporte"
-        PROFILE[Profile]
-    end
-    
-    USER --> UPS
-    SCHOOL --> UPS
-    PROFILE --> UPS
-    
-    USER --> CLASS
-    SCHOOL --> CLASS
-    SUBJECT --> CLASS
-    PROFILE --> CLASS
-    
-    USER --> ENROLL
-    CLASS --> ENROLL
-    
-    CLASS --> SUBJECT
-    USER --> SUBJECT
-```
-
----
-
-## Diagrama de Entidades (Mermaid)
-
-```mermaid
-erDiagram
-    Users ||--o{ UsersProfilesSchools : "vinculos"
-    Users ||--o{ Classes : "cria"
-    Users ||--o{ Classes : "registra"
-    Users ||--o{ Classes : "aprova"
-    Users ||--o{ Classes : "inscrito"
-    Users ||--o{ EnrollmentRequest : "solicita"
-    Schools ||--o{ UsersProfilesSchools : "tem_usuarios"
-    Schools ||--o{ Classes : "tem_aulas"
-    Profiles ||--o{ UsersProfilesSchools : "atribuidos"
-    Profiles ||--o{ Classes : "perfil_aula"
-    Subjects ||--o{ Classes : "disciplina"
-    Subjects ||--o{ Users : "professor"
-    Classes ||--o{ EnrollmentRequest : "inscricoes"
-```
-
----
-
-## Diagrama de Classes UML
-
-```mermaid
-classDiagram
-    class Users {
-        +Int id
-        +String name
-        +String email
-        +String phone
-        +String password
-        +Int subjectId
-        +DateTime createdAt
-        +DateTime deletedAt
-    }
-    
-    class Schools {
-        +Int id
-        +String name
-        +DateTime createdAt
-        +DateTime deletedAt
-    }
-    
-    class Profiles {
-        +Int id
-        +String name
-        +DateTime createdAt
-    }
-    
-    class Subjects {
-        +Int id
-        +String name
-        +DateTime createdAt
-        +DateTime deletedAt
-    }
-    
-    class Classes {
-        +Int id
-        +Int schoolId
-        +Int subjectId
-        +Int createdByd
-        +Int registredById
-        +Int approvedById
-        +Int profileId
-        +DateTime createdAt
-        +DateTime finishedAt
-        +DateTime deletedAt
-        +DateTime statededAt
-        +DateTime approvedAt
-        +Int dayOfWeek
-        +String startTime
-        +String endTime
-        +Int enrolledById
-        +Boolean available
-    }
-    
-    class UsersProfilesSchools {
-        +Int userId
-        +Int profileId
-        +Int schoolId
-        +DateTime createdAt
-        +DateTime approvedAt
-        +Int approvedById
-    }
-    
-    class EnrollmentRequest {
-        +Int id
-        +Int classId
-        +Int professorId
-        +String status
-        +DateTime createdAt
-        +DateTime updatedAt
-    }
-    
-    Users --o UsersProfilesSchools
-    Schools --o UsersProfilesSchools
-    Profiles --o UsersProfilesSchools
-    
-    Users --o Classes
-    Schools --o Classes
-    Subjects --o Classes
-    Profiles --o Classes
-    
-    Users --o EnrollmentRequest
-    Classes --o EnrollmentRequest
-```
-
----
-
-## Fluxo de Dados
-
-```mermaid
-flowchart TD
-    subgraph "Fluxo de Inscricao"
-        A[Director cria Classe] --> B{Aula disponivel?}
-        B -->|Sim| C[Professor solicita]
-        C --> D[EnrollmentRequest PENDING]
-        D --> E{Director aprova?}
-        E -->|Sim| F[Professor vinculado<br/>available=false]
-        E -->|Nao| G[Status REJECTED]
-        C --> H{Cancelar?}
-        H -->|Sim| I[available=true<br/>enrolledById=null]
-    end
+    SUBJECTS ||--o{ CLASSES : "disciplina"
+    USERS ||--o{ CLASSES : "criador/enrolledBy"
+    CLASSES ||--o{ ENROLLMENT_REQUEST : "candidaturas"
+    USERS ||--o{ ENROLLMENT_REQUEST : "professor"
+    NETWORKS ||--o{ WORKLOAD_POLICIES : "politicas"
+    WORKLOAD_TYPES ||--o{ WORKLOAD_POLICIES : "tipo"
+    USERS ||--o{ TEACHER_WORKLOAD_RECORDS : "jornada"
+    SCHOOLS ||--o{ TEACHER_WORKLOAD_RECORDS : "jornada"
+    WORKLOAD_TYPES ||--o{ TEACHER_WORKLOAD_RECORDS : "tipo"
+    USERS ||--o{ MONTHLY_CLOSING_REPORTS : "fechamento"
+    NETWORKS ||--o{ AUDIT_LOG : "auditoria"
 ```
 
 ---
 
 ## Tabelas do Banco
 
-### Users (Usuarios)
-
-Armazena informacoes dos usuarios do sistema.
+### Profiles (Perfis) — `Profiles`
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| name | String | Sim | Nome completo |
-| email | String | Sim, unico | Email (login) |
-| phone | String | Sim | Telefone |
-| password | String | Sim | Senha hasheada |
-| subjectId | Int | Nao | Materia que leciona |
-| createdAt | DateTime | Sim | Data de criacao |
-| deletedAt | DateTime | Nao | Data de exclusao |
+| id | serial | Sim | PK auto-increment |
+| name | text | Sim | Nome do perfil |
+| createdAt | timestamp(3) | Sim | Data de criacao |
 
-**Indices**:
-- email (unico)
+**Perfis semeados por migration** (valor real do backend, espelhado em `src/constants/profile.ts` do frontend):
+
+| id | name |
+|----|------|
+| 1 | DIRETOR |
+| 2 | AUXILIAR_ADMIN |
+| 3 | PROFESSOR |
+| 4 | MASTER |
 
 ---
 
-### Schools (Escolas)
-
-Armazena as instituicoes de ensino.
+### Users (Usuarios) — `Users`
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| name | String | Sim | Nome da escola |
-| createdAt | DateTime | Sim | Data de criacao |
-| deletedAt | DateTime | Nao | Data de exclusao |
+| id | serial | Sim | PK auto-increment |
+| name | text | Sim | Nome completo |
+| email | text | Sim, unico | Email (login) |
+| phone | text | Sim | Telefone |
+| password | text | Sim | Senha hasheada (bcrypt) |
+| subjectId | integer | Nao | FK Subjects — materia que leciona |
+| substitutionLimitPerSemester | integer | Nao | Limite individual de substituicoes por semestre (nullable = sem limite) |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| deletedAt | timestamp(3) | Nao | Soft delete (helper `notDeleted()`) |
+
+**Indices**: `Users_email_key` (unico), `Users_email_idx`.
 
 ---
 
-### Subjects (Disciplinas)
+### Subjects (Disciplinas) — `Subjects`
 
-Armazena as materias/disciplinas oferecidas.
+Catalogo global (ADR-003 — não é escopado por escola/rede).
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| name | String | Sim | Nome da disciplina |
-| createdAt | DateTime | Sim | Data de criacao |
-| deletedAt | DateTime | Nao | Data de exclusao |
+| id | serial | Sim | PK auto-increment |
+| name | text | Sim | Nome da disciplina |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| deletedAt | timestamp(3) | Nao | Soft delete |
 
 ---
 
-### Profiles (Perfis)
+### Networks (Redes de Ensino) — `Networks`
 
-Define os tipos de usuarios no sistema.
+Fronteira real do tenant (ADR-004). Sem soft delete por enquanto.
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| name | String | Sim | Nome do perfil |
-| createdAt | DateTime | Sim | Data de criacao |
-
-**Perfis disponiveis**:
-- DIRETOR (id: 1)
-- PROFESSOR (id: 2)
-- AUXILIAR_ADMIN (id: 3)
+| id | serial | Sim | PK auto-increment |
+| name | text | Sim | Nome da rede |
+| createdAt | timestamp(3) | Sim | Data de criacao |
 
 ---
 
-### Classes (Aulas/Turmas)
-
-Armazena as aulas cadastradas no sistema.
+### Schools (Escolas) — `Schools`
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| schoolId | Int | Sim | FK para Schools |
-| subjectId | Int | Sim | FK para Subjects |
-| createdByd | Int | Sim | FK para Users (criador) |
-| registredById | Int | Nao | FK para Users (registrador) |
-| approvedById | Int | Nao | FK para Users (aprovador) |
-| profileId | Int | Nao | FK para Profiles |
-| createdAt | DateTime | Sim | Data de criacao |
-| finishedAt | DateTime | Nao | Data de termino |
-| deletedAt | DateTime | Nao | Data de exclusao |
-| statededAt | DateTime | Nao | Data de inicio |
-| approvedAt | DateTime | Nao | Data de aprovacao |
-| dayOfWeek | Int | Nao | Dia (1-7, 1=segunda) |
-| startTime | String | Nao | Horario inicio (HH:MM) |
-| endTime | String | Nao | Horario fim (HH:MM) |
-| enrolledById | Int | Nao | FK para Users (inscrito) |
-| available | Boolean | Sim | Esta disponivel para inscricao |
-
-**Indices**:
-- schoolId
-- subjectId
-- createdByd
-- available
+| id | serial | Sim | PK auto-increment |
+| networkId | integer | Sim | FK Networks (on delete restrict) |
+| name | text | Sim | Nome da escola |
+| substitutionLimitPerSemester | integer | Nao | Limite configurado por escola (o gate hoje usa o limite do professor) |
+| priorityWindowHours | integer | Nao | Janela de prioridade da propria escola; NULL = abre para todos imediatamente |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| deletedAt | timestamp(3) | Nao | Soft delete |
 
 ---
 
-### UsersProfilesSchools
-
-Tabela de vinculo multiplos: Usuario <-> Perfil <-> Escola.
+### UsersProfilesSchools — vinculo Usuario <-> Perfil <-> Escola
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| userId | Int | Sim | FK para Users |
-| profileId | Int | Sim | FK para Profiles |
-| schoolId | Int | Sim | FK para Schools |
-| createdAt | DateTime | Sim | Data de criacao |
-| approvedAt | DateTime | Nao | Data de aprovacao |
-| approvedById | Int | Nao | FK para Users (aprovador) |
+| userId | integer | Sim | FK Users (PK composta) |
+| profileId | integer | Sim | FK Profiles (PK composta) |
+| schoolId | integer | Sim | FK Schools (PK composta) |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| approvedAt | timestamp(3) | Nao | Aprovacao do vinculo (so vinculos aprovados concedem acesso) |
+| approvedById | integer | Nao | FK Users — quem aprovou (on delete set null) |
 
-**Chave primaria composta**: (userId, profileId, schoolId)
-
-**Indices**:
-- userId
-- profileId
-- schoolId
+**Chave primaria composta**: `(userId, profileId, schoolId)`.
+**Indices**: `UsersProfilesSchools_userId_idx`, `_profileId_idx`, `_schoolId_idx`.
 
 ---
 
-### EnrollmentRequest (Solicitacoes de Inscricao)
-
-Armazena as solicitacoes de inscricao em aulas.
+### Classes (Aulas) — `Classes`
 
 | Campo | Tipo | Obrigatorio | Descricao |
 |-------|------|-------------|-----------|
-| id | Int | Sim | PK auto-increment |
-| classId | Int | Sim | FK para Classes |
-| professorId | Int | Sim | FK para Users |
-| status | String | Sim | PENDING, APPROVED, REJECTED, CANCELLED |
-| createdAt | DateTime | Sim | Data de criacao |
-| updatedAt | DateTime | Sim | Data de atualizacao |
-
-**Status possiveis**:
-- PENDING: Aguardando aprovacao do diretor
-- APPROVED: Aprovada pelo diretor - professor vinculado
-- REJECTED: Rejeitada pelo diretor
-- CANCELLED: Cancelada pelo professor
-
-**Indices**:
-- classId
-- professorId
-- status
-
----
-
-## Relacionamentos Detalhados
-
-```mermaid
-graph LR
-    subgraph Users
-        U[Users]
-    end
-    
-    subgraph Vinculos
-        UPS[UsersProfilesSchools]
-    end
-    
-    subgraph School
-        S[Schools]
-    end
-    
-    subgraph Profile
-        P[Profiles]
-    end
-    
-    U --"upsUser"--> UPS
-    S --"upsSchool"--> UPS
-    P --"upsProfile"--> UPS
-```
+| id | serial | Sim | PK auto-increment |
+| schoolId | integer | Sim | FK Schools |
+| subjectId | integer | Sim | FK Subjects |
+| createdByd | integer | Sim | FK Users (criador — grafia historica do banco) |
+| registredById | integer | Nao | FK Users (registrador — grafia historica) |
+| approvedById | integer | Nao | FK Users (aprovador) |
+| profileId | integer | Nao | FK Profiles |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| statededAt | timestamp(3) | Nao | Inicio da aula (grafia historica, e contrato da API) |
+| finishedAt | timestamp(3) | Nao | Termino da aula |
+| approvedAt | timestamp(3) | Nao | Data de aprovacao |
+| dayOfWeek | integer | Nao | Dia da semana (0=domingo a 6=sabado) |
+| startTime | text | Nao | Horario inicio (HH:MM) |
+| endTime | text | Nao | Horario fim (HH:MM) |
+| enrolledById | integer | Nao | FK Users — professor que ocupou a vaga (on delete set null) |
+| available | boolean | Sim | Default `true`; vira `false` ao aprovar candidatura |
+| deletedAt | timestamp(3) | Nao | Soft delete |
 
 ---
 
-## Queries Comuns (Prisma)
+### EnrollmentRequest (Candidaturas) — `EnrollmentRequest`
 
-### Buscar usuario com vinculos
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| id | serial | Sim | PK auto-increment |
+| classId | integer | Sim | FK Classes |
+| professorId | integer | Sim | FK Users |
+| status | text | Sim | Default `PENDING` (nunca foi enum nativo do Postgres) |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+| updatedAt | timestamp(3) | Sim | Atualizacao (setada explicitamente em cada update — Drizzle nao tem `@updatedAt`) |
+
+**Status possiveis**: `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`.
+**Indices**: `EnrollmentRequest_classId_idx`, `_professorId_idx`, `_status_idx`.
+
+---
+
+### WorkloadTypes (Tipos de Carga Horaria) — `WorkloadTypes`
+
+Catalogo global fixo, semeado por migration (não há controller de escrita):
+
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| id | serial | PK |
+| code | text | Codigo unico (`WorkloadTypes_code_key`) |
+| name | text | Nome legivel |
+
+**Linhas semeadas**: `AULA`, `PEDAGOGICO_COLETIVO`, `LIVRE_ESCOLHA`, `SUPLEMENTAR`, `SUBSTITUICAO`.
+
+---
+
+### WorkloadPolicies (Politicas de Carga por Rede) — `WorkloadPolicies`
+
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| id | serial | Sim | PK |
+| networkId | integer | Sim | FK Networks (PK logica: unico com o tipo) |
+| workloadTypeId | integer | Sim | FK WorkloadTypes |
+| maxHoursPerWeek | numeric(6,2) | Nao | Teto semanal do tipo na rede |
+| ataOficialRequired | boolean | Sim | Default `true` — exige referencia de ata oficial |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+
+**Chave logica**: `(networkId, workloadTypeId)` unico.
+
+---
+
+### TeacherWorkloadRecords (Jornada Docente) — `TeacherWorkloadRecords`
+
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| id | serial | Sim | PK |
+| userId | integer | Sim | FK Users (professor) |
+| schoolId | integer | Sim | FK Schools |
+| networkId | integer | Sim | FK Networks — denormalizado (ADR-005) para validar a politica sem join |
+| workloadTypeId | integer | Sim | FK WorkloadTypes |
+| hours | numeric(6,2) | Sim | Horas do registro |
+| ataOficialRef | text | Nao | Referencia da ata oficial |
+| validFrom | date | Sim | Inicio da vigencia |
+| validTo | date | Nao | Fim da vigencia (NULL = em vigor) |
+| createdById | integer | Sim | FK Users — quem lancou |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+
+**Indices**: `(schoolId, userId, validFrom)`, `(networkId, workloadTypeId)`.
+
+---
+
+### MonthlyClosingReports (Fechamento de Ponto) — `MonthlyClosingReports`
+
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| id | serial | Sim | PK |
+| userId | integer | Sim | FK Users (professor) |
+| schoolId | integer | Sim | FK Schools |
+| referenceMonth | text | Sim | Mes de referencia (`YYYY-MM`) |
+| workloadBreakdown | jsonb | Sim | Agregacao `{TIPO: horas, total}` gerada a partir da jornada |
+| status | text | Sim | Default `DRAFT` (`DRAFT` → `REVIEWED` → `CLOSED`; `reopen` volta para `DRAFT`) |
+| reviewedById | integer | Nao | FK Users — quem revisou (on delete set null) |
+| reviewedAt | timestamp(3) | Nao | Data da revisao |
+| createdAt | timestamp(3) | Sim | Data de criacao |
+
+**Chave logica**: `(userId, schoolId, referenceMonth)` unico.
+
+---
+
+### AuditLog (Rastreabilidade) — `AuditLog`
+
+| Campo | Tipo | Obrigatorio | Descricao |
+|-------|------|-------------|-----------|
+| id | bigserial | Sim | PK |
+| networkId | integer | Sim | FK Networks — denormalizado (ADR-005) para leitura por rede |
+| entityType | text | Sim | Entidade alterada (ex.: `TeacherWorkloadRecords`, `MonthlyClosingReports`) |
+| entityId | integer | Sim | Id da entidade |
+| changedById | integer | Sim | FK Users — quem alterou |
+| before | jsonb | Nao | Estado anterior |
+| after | jsonb | Nao | Estado posterior |
+| justification | text | Nao | Motivo (obrigatorio no `reopen` de fechamento) |
+| changedAt | timestamp(3) | Sim | Data da alteracao |
+
+**Indice**: `(networkId, entityType, entityId)`.
+
+---
+
+## Soft Delete
+
+Aplicado explicitamente via helper [`notDeleted()`](../src/database/soft-delete.ts) nas tabelas que têm `deletedAt`: **Users, Subjects, Schools, Classes** (era middleware implícito do Prisma; agora cada query filtra de forma visível).
+
+---
+
+## Queries Comuns (Drizzle — Relational Query API)
+
+### Buscar usuario com vinculos (e a rede de cada escola)
 
 ```typescript
-const user = await prisma.users.findUnique({
-  where: { id: 1 },
-  include: {
+const user = await db.query.users.findFirst({
+  where: and(eq(users.id, 1), notDeleted(users)),
+  with: {
     upsUser: {
-      include: {
-        profile: true,
-        school: true
-      }
-    }
-  }
+      with: { profile: true, school: { columns: { networkId: true } } },
+    },
+  },
 });
 ```
 
 ### Buscar aulas disponiveis
 
 ```typescript
-const availableClasses = await prisma.classes.findMany({
-  where: {
-    available: true,
-    deletedAt: null
-  },
-  include: {
-    school: true,
-    subject: true
-  }
+const availableClasses = await db.query.classes.findMany({
+  where: and(eq(classes.available, true), notDeleted(classes)),
+  with: { school: true, subject: true },
 });
 ```
 
-### Criar EnrollmentRequest
+### Criar candidatura
 
 ```typescript
-const enrollmentRequest = await prisma.enrollmentRequest.create({
-  data: {
-    class: { connect: { id: classId } },
-    professor: { connect: { id: professorId } },
-    status: 'PENDING'
-  }
+const [enrollmentRequest] = await db
+  .insert(enrollmentRequest)
+  .values({ classId, professorId, status: 'PENDING', updatedAt: new Date() })
+  .returning();
+```
+
+### Aprovar candidatura (transacao atomica)
+
+```typescript
+await db.transaction(async (tx) => {
+  await tx
+    .update(enrollmentRequest)
+    .set({ status: 'APPROVED', updatedAt: new Date() })
+    .where(eq(enrollmentRequest.id, requestId));
+  await tx
+    .update(classes)
+    .set({ enrolledById: professorId, available: false })
+    .where(eq(classes.id, classId));
 });
 ```
 
-### Aprovar inscricao
+### Jornada docente vigente de um professor na escola
 
 ```typescript
-await prisma.$transaction([
-  prisma.enrollmentRequest.update({
-    where: { id: requestId },
-    data: { status: 'APPROVED' }
-  }),
-  prisma.classes.update({
-    where: { id: classId },
-    data: {
-      enrolledById: professorId,
-      available: false
-    }
-  })
-]);
+const records = await db.query.teacherWorkloadRecords.findMany({
+  where: and(
+    eq(teacherWorkloadRecords.userId, userId),
+    eq(teacherWorkloadRecords.schoolId, schoolId),
+  ),
+  with: { workloadType: true, school: true },
+  orderBy: (fields, { desc }) => [desc(fields.validFrom)],
+});
 ```
 
 ---
 
 ## Migracoes
 
-O banco e versionado via Prisma Migrate:
+O banco e versionado pelo **drizzle-kit**:
 
 ```bash
-# Criar nova migration
-npx prisma migrate dev --name nome_da_migration
+# Gerar migration a partir de src/database/schema.ts
+pnpm db:generate
 
-# Aplicar migrations em producao
-npx prisma migrate deploy
+# Aplicar migrations pendentes (carrega o .env sozinho)
+pnpm db:migrate
 
-# Resetar banco (desenvolvimento)
-npx prisma migrate reset
+# Drizzle Studio (inspecao visual)
+pnpm db:studio
 ```
+
+O baseline da migração Prisma -> Drizzle (`0000_...`) foi registrado manualmente em `drizzle.__drizzle_migrations` sem reexecutar DDL (as tabelas já existiam). A migration da Fase 2 (`0001_...`) faz backfill da "Rede Padrão" antes de `Schools.networkId` virar `NOT NULL`.
 
 ---
 
-## Schema Prisma Completo
+## Schema Completo
 
-O arquivo completo esta em `prisma/schema.prisma` e contem todas as definicoes de modelos, relacoes e indices.
+A definição completa (tabelas, colunas, FKs, índices e relations) está em [`src/database/schema.ts`](../src/database/schema.ts). `prisma/schema.prisma` e `prisma/migrations/` continuam no repositório apenas como referência histórica da era pré-Drizzle.
