@@ -63,6 +63,243 @@ erDiagram
     NETWORKS ||--o{ AUDIT_LOG : "auditoria"
 ```
 
+### Diagrama de Dependencies de Entidades
+
+```mermaid
+graph TD
+    subgraph "Entidades Principais"
+        USER[User]
+        SCHOOL[School]
+        SUBJECT[Subject]
+        NETWORK[Network]
+    end
+    
+    subgraph "Entidades de Associacao"
+        UPS[UsersProfilesSchools]
+        CLASS[Class]
+        ENROLL[EnrollmentRequest]
+        TWR[TeacherWorkloadRecord]
+    end
+    
+    subgraph "Entidades de Suporte"
+        PROFILE[Profile]
+        WTYPE[WorkloadType]
+        WPOLICY[WorkloadPolicy]
+        MCR[MonthlyClosingReport]
+        AUDIT[AuditLog]
+    end
+    
+    NETWORK --> SCHOOL
+    NETWORK --> WPOLICY
+    NETWORK --> TWR
+    NETWORK --> AUDIT
+    
+    USER --> UPS
+    SCHOOL --> UPS
+    PROFILE --> UPS
+    
+    USER --> CLASS
+    SCHOOL --> CLASS
+    SUBJECT --> CLASS
+    PROFILE --> CLASS
+    
+    USER --> ENROLL
+    CLASS --> ENROLL
+    
+    WTYPE --> WPOLICY
+    WTYPE --> TWR
+    USER --> TWR
+    SCHOOL --> TWR
+    
+    USER --> MCR
+    SCHOOL --> MCR
+    
+    CLASS --> SUBJECT
+    USER --> SUBJECT
+```
+
+### Diagrama de Classes UML
+
+```mermaid
+classDiagram
+    class Users {
+        +Int id
+        +String name
+        +String email
+        +String phone
+        +String password
+        +Int subjectId
+        +Int substitutionLimitPerSemester
+        +DateTime createdAt
+        +DateTime deletedAt
+    }
+    
+    class Profiles {
+        +Int id
+        +String name
+        +DateTime createdAt
+    }
+    
+    class Subjects {
+        +Int id
+        +String name
+        +DateTime createdAt
+        +DateTime deletedAt
+    }
+    
+    class Networks {
+        +Int id
+        +String name
+        +DateTime createdAt
+    }
+    
+    class Schools {
+        +Int id
+        +Int networkId
+        +String name
+        +Int substitutionLimitPerSemester
+        +Int priorityWindowHours
+        +DateTime createdAt
+        +DateTime deletedAt
+    }
+    
+    class Classes {
+        +Int id
+        +Int schoolId
+        +Int subjectId
+        +Int createdByd
+        +Int registredById
+        +Int approvedById
+        +Int profileId
+        +DateTime createdAt
+        +DateTime finishedAt
+        +DateTime deletedAt
+        +DateTime statededAt
+        +DateTime approvedAt
+        +Int dayOfWeek
+        +String startTime
+        +String endTime
+        +Int enrolledById
+        +Boolean available
+    }
+    
+    class UsersProfilesSchools {
+        +Int userId
+        +Int profileId
+        +Int schoolId
+        +DateTime createdAt
+        +DateTime approvedAt
+        +Int approvedById
+    }
+    
+    class EnrollmentRequest {
+        +Int id
+        +Int classId
+        +Int professorId
+        +String status
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+    
+    class WorkloadTypes {
+        +Int id
+        +String code
+        +String name
+    }
+    
+    class WorkloadPolicies {
+        +Int id
+        +Int networkId
+        +Int workloadTypeId
+        +Decimal maxHoursPerWeek
+        +Boolean ataOficialRequired
+        +DateTime createdAt
+    }
+    
+    class TeacherWorkloadRecords {
+        +Int id
+        +Int userId
+        +Int schoolId
+        +Int networkId
+        +Int workloadTypeId
+        +Decimal hours
+        +String ataOficialRef
+        +Date validFrom
+        +Date validTo
+        +Int createdById
+        +DateTime createdAt
+    }
+    
+    class MonthlyClosingReports {
+        +Int id
+        +Int userId
+        +Int schoolId
+        +String referenceMonth
+        +Json workloadBreakdown
+        +String status
+        +Int reviewedById
+        +DateTime reviewedAt
+        +DateTime createdAt
+    }
+    
+    class AuditLog {
+        +BigInt id
+        +Int networkId
+        +String entityType
+        +Int entityId
+        +Int changedById
+        +Json before
+        +Json after
+        +String justification
+        +DateTime changedAt
+    }
+    
+    Users --o UsersProfilesSchools
+    Schools --o UsersProfilesSchools
+    Profiles --o UsersProfilesSchools
+    
+    Networks --o Schools
+    Networks --o WorkloadPolicies
+    Networks --o TeacherWorkloadRecords
+    Networks --o AuditLog
+    
+    Users --o Classes
+    Schools --o Classes
+    Subjects --o Classes
+    Profiles --o Classes
+    
+    Users --o EnrollmentRequest
+    Classes --o EnrollmentRequest
+    
+    WorkloadTypes --o WorkloadPolicies
+    WorkloadTypes --o TeacherWorkloadRecords
+    Users --o TeacherWorkloadRecords
+    Schools --o TeacherWorkloadRecords
+    
+    Users --o MonthlyClosingReports
+    Schools --o MonthlyClosingReports
+    
+    Users --o AuditLog
+```
+
+### Fluxo de Dados
+
+```mermaid
+flowchart TD
+    subgraph "Fluxo de Inscricao"
+        A[Diretor cria Classe<br/>available=true] --> B{Aula disponivel?}
+        B -->|Sim| C[Professor solicita]
+        C --> D[EnrollmentRequest PENDING]
+        D --> E{Diretor aprova?}
+        E -->|Sim| F[Professor vinculado<br/>enrolledById=professor<br/>available=false]
+        E -->|Nao| G[Status REJECTED]
+        C --> H{Professor cancela?}
+        H -->|Sim| I[Status CANCELLED]
+        F --> J{Professor cancela?}
+        J -->|Sim| K[Status CANCELLED<br/>available=true<br/>enrolledById=null]
+    end
+```
+
 ---
 
 ## Tabelas do Banco
@@ -290,6 +527,34 @@ Aplicado explicitamente via helper [`notDeleted()`](../src/database/soft-delete.
 
 ---
 
+## Relacionamentos Detalhados
+
+As relacoes sao declaradas com `relations()` no proprio schema, o que habilita a
+Relational Query API (`db.query.<tabela>.findMany({ with: ... })`). Nomes de
+relacao disponiveis para o `with`:
+
+| Tabela | Relacoes |
+|--------|----------|
+| users | `upsUser`, `approvedLinks`, `classesCreated`, `classesRegistered`, `classesApproved`, `classesEnrolled`, `enrollmentRequests` |
+| schools | `network`, `upsSchool`, `classSchool` |
+| profiles | `upsProfile`, `classProfile` |
+| subjects | `classSubject` |
+| networks | `schools`, `workloadPolicies`, `auditLog` |
+| usersProfilesSchools | `school`, `user`, `profile`, `approvedBy` |
+| classes | `school`, `subject`, `createdBy`, `registredBy`, `approvedBy`, `profile`, `enrolledBy`, `enrollmentRequests` |
+| enrollmentRequest | `class`, `professor` |
+| workloadTypes | `workloadPolicies`, `teacherWorkloadRecords` |
+| workloadPolicies | `network`, `workloadType` |
+| teacherWorkloadRecords | `user`, `school`, `network`, `workloadType`, `createdBy` |
+| monthlyClosingReports | `user`, `school`, `reviewedBy` |
+| auditLog | `network`, `changedBy` |
+
+Algumas relacoes usam `relationName` porque apontam para a mesma tabela
+(ex.: `classesCreated`, `classesRegistered`, `classesApproved` e
+`classesEnrolled` sao quatro FKs de Users em Classes).
+
+---
+
 ## Queries Comuns (Drizzle — Relational Query API)
 
 ### Buscar usuario com vinculos (e a rede de cada escola)
@@ -317,7 +582,7 @@ const availableClasses = await db.query.classes.findMany({
 ### Criar candidatura
 
 ```typescript
-const [enrollmentRequest] = await db
+const [created] = await db
   .insert(enrollmentRequest)
   .values({ classId, professorId, status: 'PENDING', updatedAt: new Date() })
   .returning();
@@ -338,7 +603,7 @@ await db.transaction(async (tx) => {
 });
 ```
 
-### Jornada docente vigente de um professor na escola
+### Jornada docente de um professor na escola
 
 ```typescript
 const records = await db.query.teacherWorkloadRecords.findMany({
@@ -350,6 +615,10 @@ const records = await db.query.teacherWorkloadRecords.findMany({
   orderBy: (fields, { desc }) => [desc(fields.validFrom)],
 });
 ```
+
+> A soma das horas **vigentes** (sem `validTo`, ou com `validTo` no futuro) e
+> feita em `TeacherWorkloadRecordsRepository.sumActiveHours()`, considerando
+> tambem o `workloadTypeId`.
 
 ---
 
