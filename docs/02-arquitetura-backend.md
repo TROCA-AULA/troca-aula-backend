@@ -21,7 +21,7 @@ graph TB
     end
     
     subgraph Infraestrutura
-        P[Prisma<br/>PostgreSQL]
+        P[Drizzle<br/>PostgreSQL]
         A[Auth JWT]
     end
     
@@ -83,7 +83,7 @@ sequenceDiagram
     participant G as Guards
     participant S as Service
     participant R as Repository
-    participant P as Prisma
+    participant P as Drizzle
     participant DB as PostgreSQL
     
     U->>FE: Realiza ação
@@ -95,7 +95,7 @@ sequenceDiagram
     API->>S: Chama método do Service
     S->>R: Chama método do Repository
     
-    R->>P: prisma.entity.findFirst()
+    R->>P: db.query.entity.findFirst()
     P->>DB: SELECT * FROM...
     DB->>P: Resultado
     P->>R: Entity
@@ -112,16 +112,22 @@ sequenceDiagram
 ```text
 src/
 ├── modules/
-│   ├── auth/           # Autenticacao e Login
-│   ├── users/          # Gerenciamento de Usuarios
-│   ├── schools/        # Gerenciamento de Escolas
-│   ├── subjects/       # Gerenciamento de Disciplinas
-│   ├── classes/        # Gerenciamento de Aulas/Turmas
-│   ├── profile/        # Perfis de Usuario
-│   └── swap-requests/  # Sistema de Troca de Aulas
-├── config/             # Configuracoes
-├── prisma.service.ts  # Conexao com Banco
-└── app.module.ts      # Modulo Principal
+│   ├── audit-log/                # Trilha de auditoria (leitura MASTER-only)
+│   ├── auth/                     # Autenticacao, guards e contexto de tenant
+│   ├── classes/                  # Aulas/turmas e indicador de cobertura
+│   ├── enrollment-requests/      # Candidatura a aula vaga e aprovacao
+│   ├── monthly-closing-reports/  # Fechamento mensal de ponto
+│   ├── networks/                 # Redes de ensino (tenant)
+│   ├── profile/                  # Perfis de usuario
+│   ├── schools/                  # Escolas (tenant)
+│   ├── subjects/                 # Disciplinas
+│   ├── teacher-workload-records/ # Jornada docente
+│   ├── users/                    # Usuarios e vinculos
+│   └── workload-policies/        # Politicas de carga horaria por rede
+├── config/                       # Configuracoes da aplicacao
+├── database/                     # Schema, conexao Drizzle e soft delete
+├── app.module.ts                 # Modulo Principal
+└── main.ts                       # Bootstrap da aplicacao
 ```
 
 ## Padroes Utilizados
@@ -131,17 +137,15 @@ Cada modulo possui seu proprio repository para acesso a dados:
 
 ```typescript
 // Exemplo de estrutura
-src/modules/swap-requests/
-├── dto/                    # Data Transfer Objects
-│   ├── create-swap-request.dto.ts
-│   ├── update-swap-request.dto.ts
-│   └── get-swap-request.dto.ts
-├── entities/               # Entidades TypeScript
-│   └── swap-request.entity.ts
-├── swap-requests.repository.ts    # Acesso a dados
-├── swap-requests.service.ts      # Logica de negocio
-├── swap-requests.controller.ts   # Endpoints HTTP
-└── swap-requests.module.ts       # Configuracao do modulo
+src/modules/enrollment-requests/
+├── dto/                                    # Data Transfer Objects
+│   ├── create-enrollment-request.dto.ts
+│   ├── filter-enrollment-request.dto.ts
+│   └── update-enrollment-request.dto.ts
+├── enrollment-requests.repository.ts      # Acesso a dados
+├── enrollment-requests.service.ts         # Logica de negocio
+├── enrollment-requests.controller.ts      # Endpoints HTTP
+└── enrollment-requests.module.ts          # Configuracao do modulo
 ```
 
 ### Dependency Injection
@@ -149,10 +153,13 @@ O NestJS utiliza injeção de dependência para gerenciar servicos:
 
 ```typescript
 @Injectable()
-export class SwapRequestsService {
+export class EnrollmentRequestsService {
   constructor(
-    private readonly repository: SwapRequestsRepository,
-    private readonly prisma: PrismaService,
+    private readonly repository: EnrollmentRequestsRepository,
+    private readonly userRepository: UsersRepository,
+    private readonly classesRepository: ClassesRepository,
+    private readonly drizzle: DrizzleService,
+    private readonly tenantContextService: TenantContextService,
   ) {}
 }
 ```
@@ -175,7 +182,7 @@ sequenceDiagram
     API->>Ctrl: Dispatch to Controller
     Ctrl->>Svc: Chamar metodo
     Svc->>Repo: Acessar dados
-    Repo->>DB: Query Prisma
+    Repo->>DB: Query Drizzle
     DB->>Repo: Resultado
     Repo->>Svc: Dados processados
     Svc->>Ctrl: Resposta
@@ -243,10 +250,10 @@ PORT=3000
 
 ### Nomeclatura
 
-- **Controllers**: *.controller.ts - nome no plural (swap-requests)
-- **Services**: *.service.ts - nome singular (SwapRequestsService)
+- **Controllers**: *.controller.ts - nome no plural (enrollment-requests)
+- **Services**: *.service.ts - nome singular (EnrollmentRequestsService)
 - **Repositories**: *.repository.ts - nome no plural
-- **DTOs**: *.dto.ts - verbo + recurso (create-swap-request.dto.ts)
+- **DTOs**: *.dto.ts - verbo + recurso (create-enrollment-request.dto.ts)
 
 ### Retorno de API
 

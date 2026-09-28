@@ -276,7 +276,7 @@ flowchart TD
 
 ### R004 - Conflito de Horario
 
-**Definicao**: Dois swaps conflitam quando:
+**Definicao**: Duas substituicoes do mesmo professor conflitam quando:
 - Mesmo dia da semana (dayOfWeek igual)
 - Horarios se sobrepoem
 

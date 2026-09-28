@@ -4,7 +4,7 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 
 > **Ver também:** [`design-doc-evolucao-multi-tenant.md`](../../docs/design-doc-evolucao-multi-tenant.md) (raiz do projeto) — arquitetura completa da evolução multi-tenant, migração Prisma→Drizzle e conformidade municipal.
 >
-> **Atualização (Fases 0-4 + P15 + MonthlyClosingReports — roadmap completo):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3), indicador estatístico simples (Fase 4) e o serviço de relatório mensal de fechamento de ponto estão implementados no código. Fases 0-4 e P15 já commitados (branch `v2`); `MonthlyClosingReports` ainda está no working tree, não commitado. Segue pendente: RLS (deliberadamente não ativado, ver ADR-006 no Design Doc), frontend do indicador da Fase 4 e de `MonthlyClosingReports`.
+> **Atualização (Fases 0-4 + P15 + MonthlyClosingReports — roadmap completo):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3), indicador estatístico (Fase 4, backend + tela de indicadores no frontend), fluxo de senha (troca pelo próprio usuário e reset por gestor), `networkId` por vínculo no JWT e o serviço de relatório mensal de fechamento de ponto — incluindo o fluxo de correção (`reopen`) — estão implementados e commitados na branch `v2` (backend **263/263 testes, 33 suítes, 0 falhas**). Segue pendente: RLS (deliberadamente não ativado, ver ADR-006 no Design Doc), Fase 5 (bloqueada em definições de negócio), envio por e-mail/convite, testes E2E reais (hoje só o boilerplate do Nest) e ML/NLP/dashboard analítico (WON'T).
 >
 > **P15 (achado durante a Fase 3, corrigido nesta rodada):** `GET /users` ganhou filtros opcionais `schoolId`/`profileId`; novo endpoint `POST /users/:id/unassign-profile` (contraparte de `assign-profile`). Bug adicional corrigido: `assign-profile` nunca setava `approvedAt`/`approvedById`, então o vínculo criado nunca era considerado aprovado — o endpoint não concedia acesso nenhum na prática. Validado end-to-end contra Postgres real (criar → vincular → listar filtrado → desvincular → confirmar sumiço).
 >
@@ -31,14 +31,14 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 | P6 - Duas lógicas de autorização divergentes | ✅ Corrigido | `classes.service.ts` e `enrollment-requests.service.ts` agora usam a mesma fonte de verdade: `TenantContextService` (`src/modules/auth/tenant/tenant-context.service.ts`) |
 | P7 - `enum ProfileEnum` desatualizado | ✅ Corrigido | `MASTER = 4` adicionado, confirmado contra a migration `20260818220000_normalize_profile_names` |
 
-**Como validar:** `npx tsc --noEmit` e `pnpm test` (211 testes, 204 passando após a Fase 4 — os 7 que falham são a mesma dívida técnica pré-existente de sempre: `profile.controller.spec.ts`, `create-user.dto.spec.ts`). Novos testes dedicados em `src/modules/auth/tenant/tenant-context.service.spec.ts`, `src/modules/auth/guards/{tenant,roles}.guard.spec.ts`, nos specs de `users` (assign/unassign-profile, filtros de `findAll`) e nos specs de `classes` (`getCoverageStats`/`getCoverageCounts`).
+**Como validar:** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas** — as 7 falhas pré-existentes de `profile.controller.spec.ts`/`create-user.dto.spec.ts` foram corrigidas). Novos testes dedicados em `src/modules/auth/tenant/tenant-context.service.spec.ts`, `src/modules/auth/guards/{tenant,roles}.guard.spec.ts`, nos specs de `users` (assign/unassign-profile, filtros de `findAll`) e nos specs de `classes` (`getCoverageStats`/`getCoverageCounts`).
 
 ### Ciência de Dados — Fase 4 do Design Doc (COULD, prioridade baixa)
 
 | Item | Status | Observação |
 |------|--------|------------|
 | Indicador estatístico de risco de aula vaga | ✅ Implementado | `GET /classes/coverage-stats?schoolId=&subjectId=&dayOfWeek=` (todos os filtros opcionais). Retorna `{ totalVagas, cobertas, taxaCobertura, nivel }`; `nivel` é heurística simples (≥0,7 baixo · 0,4-0,7 médio · <0,4 alto; sem dado = alto por precaução), documentada em `src/modules/classes/interfaces/coverage-stats.interface.ts`. Sem tabela nova, sem job — agregação direta sobre `Classes` existente. Protegido por `TenantGuard` quando `schoolId` é informado. |
-| Frontend do indicador | 📋 Pendente | Fora do escopo mínimo da Fase 4 (backend-only por decisão de prioridade); endpoint pronto para consumo. |
+| Frontend do indicador | ✅ Feito | Tela de indicadores consome `GET /classes/coverage-stats` no `troca-aula-front` (implementada após o backend). |
 | ML preditivo / NLP / dashboard analítico completo | ❌ Não implementado (WON'T) | Visão de futuro registrada no Design Doc, fora do roadmap comprometido deste ciclo. |
 
 ---
@@ -63,8 +63,12 @@ O backend já conta com as seguintes funcionalidades:
 
 ### Autenticação e Autorização
 - Login JWT com bcrypt ✅
-- Guards para rotas autenticadas ✅
-- Validação de perfil (DIRETOR, PROFESSOR, AUXILIAR_ADMIN) ✅
+- Fallback lazy para o hash legado (SHA1+bcrypt), com migração no primeiro login bem-sucedido ✅
+- `networkId` por vínculo escola/perfil no payload do JWT ✅
+- Troca de senha pelo próprio usuário (`PATCH /auth/change-password`) ✅
+- Reset de senha por gestor (`POST /users/:id/reset-password`; MASTER ou gestor de escola compartilhada) ✅
+- Guards para rotas autenticadas (AuthGuard, TenantGuard, RolesGuard) ✅
+- Validação de perfil (MASTER, DIRETOR, AUXILIAR_ADMIN, PROFESSOR) ✅
 
 ### Módulos CRUD
 - Users (usuários) ✅
@@ -72,6 +76,11 @@ O backend já conta com as seguintes funcionalidades:
 - Subjects (disciplinas) ✅
 - Classes (aulas) ✅
 - Profile (perfis) ✅
+- Networks (redes) ✅
+- WorkloadPolicies (políticas de carga horária) ✅
+- TeacherWorkloadRecords (jornada docente) ✅
+- MonthlyClosingReports (fechamento mensal, incl. `reopen`) ✅
+- AuditLog (leitura por rede/entidade, MASTER-only) ✅
 
 ### Funcionalidades de Negócio
 - Criação de aulas vagas ✅
@@ -80,6 +89,8 @@ O backend já conta com as seguintes funcionalidades:
 - Verificação de conflito de horário ✅
 - Verificação de habilitação por matéria ✅
 - Verificação de disponibilidade de aula ✅
+- Controle de limite de substituições (`GET /enrollment-requests/substitution-limit/:professorId`) ✅
+- Verificação do teto de jornada docente via WorkloadPolicies ✅
 - Controle de permissões por perfil ✅
 
 ---
@@ -147,14 +158,27 @@ async loginGovBr(@Body() body: { token: string }) {
 | Sistema de candidaturas | ✅ Completo |
 | Controle de limite de substituições | ✅ Implementado |
 | Integração Gov.br | ✅ Stub implementado |
-| Documentação API | ⚠️ Desatualizada em partes (ver nota abaixo) |
+| Documentação API | ✅ Sincronizada (README + `docs/01`/`02`/`03`/`04`) — ver nota abaixo |
 | Guarda de tenant/perfil centralizada | ✅ Implementada (Fase 0) — ver P3-P7 acima |
 | Migração Prisma → Drizzle | ✅ Implementada (Fase 1) — ver nota técnica abaixo |
 | Modelo multi-tenant (`Networks`, `WorkloadPolicies`, `TeacherWorkloadRecords`, `AuditLog`) | ✅ Implementado (Fase 2) — ver nota técnica abaixo |
 | `MonthlyClosingReports` (relatório mensal de fechamento) | ✅ Implementado — ver seção "Fase 2b" abaixo |
 | RLS (Row-Level Security) | ❌ Deliberadamente não ativado — ver ADR-006 no Design Doc |
 | Correção do contrato quebrado de vínculo de professores (P15) | ✅ Implementado — `unassign-profile` + filtros em `GET /users` |
-| Indicador estatístico de risco de aula vaga (Fase 4) | ✅ Implementado — `GET /classes/coverage-stats`, ver seção "Ciência de Dados" acima |
+| Indicador estatístico de risco de aula vaga (Fase 4) | ✅ Implementado — `GET /classes/coverage-stats` (backend + frontend), ver seção "Ciência de Dados" acima |
+| `networkId` por vínculo no JWT | ✅ Implementado — `AuthService.signIn` + `UsersRepository.findOneBy` |
+| Fluxo de senha (troca pelo próprio usuário + reset por gestor) | ✅ Implementado — `PATCH /auth/change-password`, `POST /users/:id/reset-password` |
+| Fluxo de correção do fechamento mensal (`reopen`) | ✅ Implementado — `PATCH /monthly-closing-reports/:id/reopen`, justificativa obrigatória e auditada |
+
+### Pendências Remanescentes (reais)
+
+| Item | Status | Observação |
+|------|--------|------------|
+| RLS (Row-Level Security) | ❌ Não ativado (decisão) | Deliberadamente fora do escopo — ver ADR-006 no Design Doc; isolamento garantido por `TenantGuard`/`RolesGuard` + escopo explícito nas queries |
+| Fase 5 — motor de elegibilidade geográfica | ⏸️ Bloqueada | Depende de definições de negócio ainda em aberto (ver Design Doc, Seção 9) |
+| Envio por e-mail/convite | 📋 Pendente | A senha temporária do reset é devolvida uma única vez na resposta para o gestor repassar; não há envio automático nem fluxo de convite |
+| Testes E2E reais | 📋 Pendente | `test/app.e2e-spec.ts` ainda é o boilerplate do Nest; a cobertura real hoje é unitária (33 suítes) |
+| ML preditivo / NLP / dashboard analítico completo | ❌ WON'T | Visão de futuro do Design Doc, fora do roadmap comprometido deste ciclo |
 
 ### Fase 1 — Migração Prisma → Drizzle (implementada)
 
@@ -167,7 +191,7 @@ async loginGovBr(@Body() body: { token: string }) {
 - **Comandos novos:** `pnpm db:generate` (gera migration a partir do schema), `pnpm db:migrate` (aplica migrations pendentes), `pnpm db:studio` (Drizzle Studio). Substituem `prisma generate`/`prisma migrate dev`/`prisma migrate deploy`.
 - **`@prisma/client` e `prisma` removidos do `package.json`.** `prisma/schema.prisma` e `prisma/migrations/` mantidos como referência histórica (não é mais a fonte de verdade).
 
-**Nota sobre documentação desatualizada:** `docs/03-endpoints.md` e `docs/04-regras-negocio.md` ainda descrevem o módulo `/swap-requests`, removido do banco pela migration `remove_swap_requests` — o fluxo real hoje é `enrollment-requests`. A spec `specs/003-substitution-limit-govbr` também diverge da implementação (spec pedia limite em horas/dia; código implementou contagem de substituições aprovadas por semestre).
+**Nota sobre documentação (sincronizada):** `docs/03-endpoints.md` e `docs/04-regras-negocio.md` já descrevem o fluxo real de `enrollment-requests` (o módulo `/swap-requests` foi removido do banco pela migration `remove_swap_requests`; o texto remanescente em 04 foi corrigido). README e `docs/01`/`02` também foram sincronizados com o código desta rodada. A única divergência registrada é a spec `specs/003-substitution-limit-govbr` (pedia limite em horas/dia; o código implementou contagem de substituições aprovadas por semestre).
 
 ### Fase 2 — Modelo de dados multi-tenant (implementada)
 
@@ -179,19 +203,20 @@ async loginGovBr(@Body() body: { token: string }) {
 - **Regra de negócio central implementada:** `TeacherWorkloadRecordsService` valida, antes de criar/editar um registro, se a soma das horas vigentes do mesmo tipo para aquele professor/escola ultrapassaria `WorkloadPolicies.maxHoursPerWeek` da rede — rejeita com 400 se sim. Toda criação/edição/remoção é registrada em `AuditLog`.
 - **Módulos novos:** `NetworksModule` (CRUD, MASTER-only para escrita), `WorkloadPoliciesModule` (CRUD, MASTER-only para escrita), `TeacherWorkloadRecordsModule` (CRUD com `TenantGuard`+`RolesGuard`, endpoint `/me` para o professor ver os próprios registros), `AuditLogModule` (leitura MASTER-only).
 - **Validado de ponta a ponta contra o banco real:** rede criada → escola vinculada a ela → política de 10h/semana para carga suplementar → registro de 6h aceito (201) → registro adicional de 6h (totalizando 12h) corretamente rejeitado (400, mensagem com os números certos) → aceite registrado em `AuditLog`. Dados de teste removidos após a validação.
-**Como validar:** `pnpm run build` e `pnpm test` (194 testes, 187 passando — as mesmas 7 falhas pré-existentes de antes, 0 regressão nova). Novos testes em `src/modules/networks/*.spec.ts`, `src/modules/workload-policies/*.spec.ts`, `src/modules/audit-log/*.spec.ts`, `src/modules/teacher-workload-records/*.spec.ts`.
+**Como validar (naquela fase):** `pnpm run build` e `pnpm test` (194 testes, 187 passando — as mesmas 7 falhas pré-existentes de antes, 0 regressão nova). Novos testes em `src/modules/networks/*.spec.ts`, `src/modules/workload-policies/*.spec.ts`, `src/modules/audit-log/*.spec.ts`, `src/modules/teacher-workload-records/*.spec.ts`.
 
-### Fase 2b — `MonthlyClosingReports` (implementada, ainda não commitada)
+### Fase 2b — `MonthlyClosingReports` (implementada e commitada)
 
 - **Geração:** `POST /monthly-closing-reports/generate` (`userId`, `schoolId`, `referenceMonth` formato `YYYY-MM`) agrega os `TeacherWorkloadRecords` cujo período de vigência (`validFrom`/`validTo`) sobrepõe o mês, agrupando e somando `hours` por `workloadType.code` (`src/modules/monthly-closing-reports/monthly-closing-reports.repository.ts#aggregateWorkload`). Grava `status: 'DRAFT'`.
-- **Idempotência:** regerar um relatório ainda em `DRAFT` sobrescreve o `workloadBreakdown` (permite capturar lançamentos novos antes da revisão da gestão); regerar um relatório já `REVIEWED`/`CLOSED` é rejeitado com 400 — ajuste em relatório já conferido exigiria um fluxo de correção explícita (proposta do Sr. Walter, §6.3), fora do escopo desta implementação.
+- **Idempotência:** regerar um relatório ainda em `DRAFT` sobrescreve o `workloadBreakdown` (permite capturar lançamentos novos antes da revisão da gestão); regerar um relatório já `REVIEWED`/`CLOSED` é rejeitado com 400 — o ajuste passa pelo fluxo de correção explícita (`reopen`, abaixo), nunca por sobrescrita silenciosa da geração automática.
 - **Transições:** `PATCH /:id/review` (`DRAFT`→`REVIEWED`, seta `reviewedById`/`reviewedAt`) e `PATCH /:id/close` (`REVIEWED`→`CLOSED`; não permite pular direto de `DRAFT`). Guardadas por `RolesGuard(MASTER, DIRETOR, AUXILIAR_ADMIN)`; como a rota é por `:id` (sem `schoolId` no corpo), a checagem fina de posse da escola do relatório é feita dentro do `MonthlyClosingReportsService` (mesmo padrão de `TeacherWorkloadRecordsService.update/remove`).
+- **Correção (`reopen`):** `PATCH /:id/reopen` volta um relatório `REVIEWED`/`CLOSED` para `DRAFT` com justificativa obrigatória (mínimo 10 caracteres, registrada no `AuditLog`), permitindo regerar/ajustar antes de nova revisão; reabrir um relatório já em `DRAFT` é rejeitado com 400. Mesmas guardas de `review`/`close` (perfil de gestão + posse da escola no service).
 - **Leitura:** `GET /:id` libera o próprio professor (dono do relatório) mesmo sem perfil de gestão; `GET /` (listagem) exige perfil de gestão.
-- **Auditoria:** geração, revisão e fechamento registrados em `AuditLog` (reaproveita `AuditLogService` da Fase 2).
+- **Auditoria:** geração, revisão, fechamento e reabertura registrados em `AuditLog` (reaproveita `AuditLogService` da Fase 2).
 - **Validado de ponta a ponta contra o banco real:** professor com AULA=20h (vigente desde jan/2026) + SUPLEMENTAR=6h (vigente desde fev/2026) + SUBSTITUICAO=3h (só em fev/2026) → relatório de março/2026 gerado com `{AULA: 20, SUPLEMENTAR: 6, total: 26}` (SUBSTITUICAO corretamente excluído por não vigorar em março) → `close` sem `review` prévio rejeitado (400) → `review` → `close` → regenerar depois de `CLOSED` rejeitado (400). Dados de teste removidos após a validação.
-- **Ficou de fora (documentado, não é regressão):** fluxo de correção/ajuste de um relatório já `CLOSED`; frontend de consumo.
+- **Ficou de fora (documentado, não é regressão):** envio do relatório fechado por e-mail/convite (fora do escopo desta rodada).
 
-**Como validar:** `npx tsc --noEmit` e `pnpm test` (221 testes, 214 passando — mesmas 7 falhas pré-existentes, 0 regressão). Novos testes em `src/modules/monthly-closing-reports/monthly-closing-reports.service.spec.ts`.
+**Como validar:** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas**). Novos testes em `src/modules/monthly-closing-reports/monthly-closing-reports.service.spec.ts`.
 
 ---
 
@@ -202,4 +227,4 @@ async loginGovBr(@Body() body: { token: string }) {
 
 ---
 
-*Documento atualizado em: 2026-05-16 (seções de Fase 0/1/2 adicionadas em 2026-09-26)*
+*Documento atualizado em: 2026-05-16 (seções de Fase 0/1/2 adicionadas em 2026-09-26; status sincronizado com o código em 2026-09-27)*
