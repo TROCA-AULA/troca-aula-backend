@@ -194,6 +194,24 @@ Criação, edição e remoção são registradas em `AuditLog`.
 | GET | /audit-log/network/:networkId | Consultar trilha de auditoria da rede (MASTER) |
 | GET | /audit-log/:entityType/:entityId | Consultar trilha de auditoria de uma entidade (MASTER) |
 
+### Elegibilidade e Preferências (Fase 5 — Design Doc, Seção 9)
+
+> Motor de visibilidade de vagas por prioridade em camadas: o primeiro nível (na ordem configurada) para o qual o professor se qualifica decide quando a vaga aparece; a escola pode restringir **mais** que a rede ("o mais restritivo vence"); exclusão do próprio professor vence qualquer critério. Sem níveis configurados, vale o fallback `Schools.priorityWindowHours`. Aplicado na listagem e na candidatura.
+
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|-----------|-------------|
+| GET | /schools/:id/priority-tiers | Níveis de prioridade da escola + redes interconectadas permitidas | Gestão da escola ou MASTER |
+| PUT | /schools/:id/priority-tiers | Substitui os níveis (ordem, espera em minutos, escopo, restrição de redes) | Gestão da escola ou MASTER |
+| GET | /networks/:id/interconnections | Redes que esta rede aceita (direcional) | MASTER |
+| PUT | /networks/:id/interconnections | Substitui as interconexões | MASTER |
+| GET | /professor-preferences | Interesses de rede e exclusões de escola do próprio usuário | Autenticado |
+| POST | /professor-preferences/network-interests | Adiciona interesse por rede | Autenticado |
+| DELETE | /professor-preferences/network-interests/:networkId | Remove interesse | Autenticado |
+| POST | /professor-preferences/school-exclusions | Exclui uma escola das vagas novas | Autenticado |
+| DELETE | /professor-preferences/school-exclusions/:schoolId | Remove a exclusão | Autenticado |
+
+**Notificações por e-mail (opcional):** `EmailService` (nodemailer) envia e-mail em aprovação/rejeição de candidatura e em nova vaga (professores da matéria vinculados à escola). Sem `SMTP_HOST` no ambiente, vira no-op e nada quebra (ver `.env.example`).
+
 ### Regras de Negócio
 
 1. **Criar aula vaga**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola
