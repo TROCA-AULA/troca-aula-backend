@@ -15,6 +15,7 @@ import { ClassesRepository } from '../classes/classes.repository';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 import { EligibilityService } from '../eligibility/eligibility.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class EnrollmentRequestsService {
@@ -25,6 +26,7 @@ export class EnrollmentRequestsService {
     private readonly drizzle: DrizzleService,
     private readonly tenantContextService: TenantContextService,
     private readonly eligibilityService: EligibilityService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(classId: number, professorId: number) {
@@ -297,6 +299,12 @@ export class EnrollmentRequestsService {
         .returning();
     });
 
+    await this.notifyProfessor(
+      request.professorId,
+      'Candidatura aprovada',
+      'Sua candidatura foi aprovada pela direção. Confira os detalhes em Minhas Aulas.',
+    );
+
     return updated;
   }
 
@@ -329,7 +337,15 @@ export class EnrollmentRequestsService {
       );
     }
 
-    return this.repository.update(id, { status: 'REJECTED' });
+    const updated = await this.repository.update(id, { status: 'REJECTED' });
+
+    await this.notifyProfessor(
+      request.professorId,
+      'Candidatura rejeitada',
+      'Sua candidatura foi rejeitada pela direção. Confira os detalhes em Minhas Aulas.',
+    );
+
+    return updated;
   }
 
   async cancel(id: number, professorId: number) {
@@ -365,5 +381,17 @@ export class EnrollmentRequestsService {
     }
 
     return this.repository.update(id, { status: 'CANCELLED' });
+  }
+
+  // Notificação por e-mail é um extra: EmailService nunca lança (no-op sem
+  // SMTP configurado), então pode ser aguardada sem risco para a operação.
+  private async notifyProfessor(
+    professorId: number,
+    subject: string,
+    text: string,
+  ): Promise<void> {
+    const professor = await this.userRepository.findOne(professorId);
+    if (!professor?.email) return;
+    await this.emailService.send({ to: professor.email, subject, text });
   }
 }

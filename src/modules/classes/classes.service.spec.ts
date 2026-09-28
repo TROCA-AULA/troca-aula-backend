@@ -9,6 +9,7 @@ import { ClassesRepository } from './classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { EligibilityService } from '../eligibility/eligibility.service';
+import { EmailService } from '../email/email.service';
 import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 
 describe('ClassesService', () => {
@@ -30,17 +31,29 @@ describe('ClassesService', () => {
     evaluateMany: jest.fn(),
   };
 
+  const mockEmail = {
+    send: jest.fn(),
+    sendMany: jest.fn(),
+  };
+
   let mockDb: {
     select: jest.Mock;
     update: jest.Mock;
-    query: { users: { findFirst: jest.Mock } };
+    query: {
+      users: { findFirst: jest.Mock; findMany: jest.Mock };
+    };
   };
 
   beforeEach(async () => {
     mockDb = {
       select: jest.fn(),
       update: jest.fn(),
-      query: { users: { findFirst: jest.fn() } },
+      query: {
+        users: {
+          findFirst: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,6 +67,7 @@ describe('ClassesService', () => {
         // que a classe realmente chama em produção.
         TenantContextService,
         { provide: EligibilityService, useValue: mockEligibility },
+        { provide: EmailService, useValue: mockEmail },
       ],
     }).compile();
 
@@ -82,6 +96,31 @@ describe('ClassesService', () => {
       const result = await service.create(dto);
       expect(repository.create).toHaveBeenCalledWith(dto);
       expect(result).toEqual({ id: 1, ...dto });
+    });
+
+    it('notifica por e-mail os professores da matéria vinculados à escola', async () => {
+      const dto = { schoolId: 1, subjectId: 1, createdByd: 1 } as any;
+      mockRepository.create.mockResolvedValue({ id: 1, ...dto });
+      mockDb.query.users.findMany.mockResolvedValue([
+        {
+          id: 9,
+          name: 'Maria',
+          email: 'maria@escola.com',
+          upsUser: [{ schoolId: 1 }],
+        },
+        {
+          id: 10,
+          name: 'Sem Vínculo',
+          email: 'externo@escola.com',
+          upsUser: [],
+        },
+      ]);
+
+      await service.create(dto);
+
+      expect(mockEmail.sendMany).toHaveBeenCalledWith([
+        expect.objectContaining({ to: 'maria@escola.com' }),
+      ]);
     });
   });
 

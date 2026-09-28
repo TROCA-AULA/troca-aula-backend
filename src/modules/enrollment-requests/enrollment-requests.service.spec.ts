@@ -6,6 +6,7 @@ import { ClassesRepository } from '../classes/classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { EligibilityService } from '../eligibility/eligibility.service';
+import { EmailService } from '../email/email.service';
 import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 import {
   NotFoundException,
@@ -40,6 +41,11 @@ describe('EnrollmentRequestsService', () => {
     assertCanApply: jest.fn(),
   };
 
+  const mockEmail = {
+    send: jest.fn(),
+    sendMany: jest.fn(),
+  };
+
   // tx simula o objeto de transação passado para db.transaction(async (tx) => ...)
   const mockTx = {
     update: jest.fn(),
@@ -70,6 +76,7 @@ describe('EnrollmentRequestsService', () => {
         // TenantContextService real: usa o mesmo mockDb acima (query.users.findFirst).
         TenantContextService,
         { provide: EligibilityService, useValue: mockEligibility },
+        { provide: EmailService, useValue: mockEmail },
       ],
     }).compile();
 

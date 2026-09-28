@@ -4,18 +4,19 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { ClassesRepository } from './classes.repository';
 import { GetClassDto } from './dto/get-class.dto';
 import { GetCoverageStatsDto } from './dto/get-coverage-stats.dto';
 import { DrizzleService } from '../../database/drizzle.service';
-import { classes, users } from '../../database/schema';
+import { classes, users, usersProfilesSchools } from '../../database/schema';
 import { notDeleted } from '../../database/soft-delete';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 import { EligibilityService } from '../eligibility/eligibility.service';
+import { EmailService } from '../email/email.service';
 import {
   COVERAGE_RISK_THRESHOLDS,
   CoverageStats,
@@ -28,9 +29,48 @@ export class ClassesService {
     private readonly drizzle: DrizzleService,
     private readonly tenantContextService: TenantContextService,
     private readonly eligibilityService: EligibilityService,
+    private readonly emailService: EmailService,
   ) {}
-  create(createClassDto: CreateClassDto) {
-    return this.repository.create(createClassDto);
+  async create(createClassDto: CreateClassDto) {
+    const created = await this.repository.create(createClassDto);
+    await this.notifyEligibleProfessors(created);
+    return created;
+  }
+
+  // Notificação de nova vaga (roadmap): professores da mesma matéria com
+  // vínculo APROVADO na escola da aula. E-mail é extra — EmailService é
+  // no-op sem SMTP e nunca lança.
+  private async notifyEligibleProfessors(classData: {
+    id: number;
+    schoolId: number;
+    subjectId: number;
+  }): Promise<void> {
+    const professors = await this.drizzle.db.query.users.findMany({
+      where: and(eq(users.subjectId, classData.subjectId), notDeleted(users)),
+      columns: { id: true, name: true, email: true },
+      with: {
+        upsUser: {
+          where: and(
+            eq(usersProfilesSchools.schoolId, classData.schoolId),
+            isNotNull(usersProfilesSchools.approvedAt),
+          ),
+          columns: { schoolId: true },
+        },
+      },
+    });
+
+    const recipients = professors.filter(
+      (professor) => (professor.upsUser ?? []).length > 0,
+    );
+    if (recipients.length === 0) return;
+
+    await this.emailService.sendMany(
+      recipients.map((professor) => ({
+        to: professor.email,
+        subject: 'Nova aula vaga na sua escola',
+        text: `Olá, ${professor.name}. Uma nova aula vaga da sua matéria foi publicada na sua escola. Acesse o Troca Aula para ver os detalhes.`,
+      })),
+    );
   }
 
   async findAll(params: GetClassDto) {
