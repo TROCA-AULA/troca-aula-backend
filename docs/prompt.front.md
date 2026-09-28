@@ -13,7 +13,9 @@
 ### Stack do Backend
 - **Framework**: NestJS 11
 - **Linguagem**: TypeScript 5.7.3
-- **ORM**: Prisma 6.7
+- **ORM**: Drizzle ORM (`drizzle-orm` + `drizzle-kit`)
+- **Schema**: `src/database/schema.ts` (fonte de verdade)
+- **Migrations**: `drizzle/migrations/` (`pnpm db:generate`, `pnpm db:migrate`, `pnpm db:studio`)
 - **Banco de Dados**: PostgreSQL
 - **Autenticação**: JWT + bcrypt
 - **Package Manager**: pnpm
@@ -28,7 +30,12 @@ src/modules/
 ├── subjects/       # Disciplinas
 ├── classes/        # Aulas (aulas vagas)
 ├── enrollment-requests/  # Candidaturas/substituições
-└── profile/        # Perfis de usuário
+├── profile/        # Perfis de usuário
+├── networks/       # Redes de ensino (multi-tenant)
+├── workload-policies/        # Tetos de carga horária por rede
+├── teacher-workload-records/ # Jornada docente (horas por professor/escola)
+├── monthly-closing-reports/  # Fechamento mensal de ponto
+└── audit-log/      # Trilha de auditoria (leitura MASTER)
 ```
 
 ---
@@ -84,10 +91,10 @@ src/modules/
 | PATCH | `/classes/:id` | Atualiza aula |
 | DELETE | `/classes/:id` | Remove aula |
 
-**Filtros disponíveis**:
+**Filtros disponíveis** (validados com `whitelist`/`forbidNonWhitelisted` — parâmetro fora da lista retorna 400):
 - `?available=true` - apenas aulas vagas
-- `?dayOfWeek=1` - dia da semana (1-7)
-- `?subjectId=1` - disciplina específica
+- `?schoolId=1` - escola específica
+- `?userId=1` - aceito no DTO, mas sobrescrito pelo id do usuário do token
 
 ### Enrollment Requests (Candidaturas/Substituições)
 
@@ -95,30 +102,30 @@ src/modules/
 |--------|----------|-----------|
 | GET | `/enrollment-requests` | Lista candidaturas |
 | GET | `/enrollment-requests/:id` | Busca candidatura por ID |
-| POST | `/enrollment-requests` | Cria candidatura (professor se candidata) |
+| POST | `/enrollment-requests/request/:classId` | Cria candidatura (professor se candidata) |
 | PATCH | `/enrollment-requests/:id/approve` | Aprova candidatura (diretor) |
 | PATCH | `/enrollment-requests/:id/reject` | Rejeita candidatura (diretor) |
-| PATCH | `/enrollment-requests/:id/cancel` | Cancela candidatura (professor) |
+| DELETE | `/enrollment-requests/:id` | Cancela candidatura (professor) |
 
-**Status de Candidatura**: `PENDING` | `APPROVED` | `REJECTED`
+**Status de Candidatura**: `PENDING` | `APPROVED` | `REJECTED` | `CANCELLED`
 
 ### Profiles (Perfis)
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
-| GET | `/profiles` | Lista todos os perfis |
-| GET | `/profiles/:id` | Busca perfil por ID |
-| POST | `/profiles` | Cria novo perfil |
-| PATCH | `/profiles/:id` | Atualiza perfil |
-| DELETE | `/profiles/:id` | Remove perfil |
+| GET | `/profile` | Lista todos os perfis |
+| GET | `/profile/:id` | Busca perfil por ID |
+| POST | `/profile` | Cria novo perfil |
+| PATCH | `/profile/:id` | Atualiza perfil |
+| DELETE | `/profile/:id` | Remove perfil |
 
 ---
 
 ## Regras de Negócio do Backend
 
 ### 1. Controle de Limite de Substituições
-- Cada escola pode ter um `substitutionLimitPerSemester` configurado
-- Se definido, o sistema bloqueia novas candidaturas quando o professor atinge o limite
+- Cada professor pode ter um `substitutionLimitPerSemester` configurado (campo em `Users`)
+- Se definido, o sistema bloqueia novas candidaturas quando o professor atinge o limite de substituições aprovadas no semestre
 - Mensagem de erro: "Limite de substituições atingido para este semestre (X limite)"
 
 ### 2. Verificação de Conflito de Horário
@@ -129,6 +136,7 @@ src/modules/
 - `PENDING` - aguardando aprovação do diretor
 - `APPROVED` - substituicao confirmada
 - `REJECTED` - rejeitada pelo diretor
+- `CANCELLED` - cancelada pelo professor
 
 ### 4. Perfis de Usuário
 - **Admin**: acesso total

@@ -312,7 +312,7 @@ O Sistema Troca Aula foi desarrollado utilizando um conjunto de tecnologias mode
 
 **PostgreSQL**: Um sistema de gerenciamento de banco de dados relacional, reconhecido por sua confiabilidade e capacidade de lidar com grandes volumes de dados.
 
-**Prisma**: Uma ferramenta que facilita a comunicação entre o código e o banco de dados, abstract a complexidade das consultas SQL.
+**Drizzle ORM**: Uma ferramenta que facilita a comunicação entre o código e o banco de dados, abstraindo a complexidade das consultas SQL.
 
 **GitHub Actions**: Uma plataforma de automação que executa testes e faz o deploy do sistema automaticamente a cada atualização.
 
