@@ -9,4 +9,11 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  // Health check simples (sem tocar no banco) — usado por deploy/monitoração
+  // e pelos testes e2e para validar o wiring do AppModule.
+  @Get('health')
+  getHealth() {
+    return { status: 'ok' };
+  }
 }
