@@ -46,7 +46,10 @@ describe('App (e2e)', () => {
   });
 
   it('GET / responde Hello World!', () => {
-    return request(app.getHttpServer()).get('/').expect(200).expect('Hello World!');
+    return request(app.getHttpServer())
+      .get('/')
+      .expect(200)
+      .expect('Hello World!');
   });
 
   it('GET /health responde ok sem tocar no banco', () => {
@@ -72,7 +75,10 @@ describe('App (e2e)', () => {
   });
 
   it('POST /auth/login sem corpo responde 400 (ValidationPipe global)', () => {
-    return request(app.getHttpServer()).post('/auth/login').send({}).expect(400);
+    return request(app.getHttpServer())
+      .post('/auth/login')
+      .send({})
+      .expect(400);
   });
 
   it('PATCH /auth/change-password com token inválido responde 401', () => {

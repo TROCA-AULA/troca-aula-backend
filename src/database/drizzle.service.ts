@@ -6,6 +6,7 @@ import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 // (o require() já é a própria função). `import ... = require(...)` é a forma
 // correta aqui, confirmada rodando a app de fato (não só os testes
 // unitários, que mockam o módulo e mascaravam esse erro).
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- import = require é a forma correta para o CJS `export = postgres` (ver nota acima)
 import postgres = require('postgres');
 import * as schema from './schema';
 
@@ -35,7 +36,7 @@ export class DrizzleService implements OnModuleInit, OnModuleDestroy {
   private client!: postgres.Sql;
   db!: PostgresJsDatabase<typeof schema>;
 
-  async onModuleInit() {
+  onModuleInit() {
     this.client = postgres(
       toPostgresJsConnectionString(process.env.DATABASE_URL as string),
     );

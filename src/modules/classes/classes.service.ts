@@ -14,7 +14,7 @@ import { DrizzleService } from '../../database/drizzle.service';
 import { classes, users } from '../../database/schema';
 import { notDeleted } from '../../database/soft-delete';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
-import { MANAGER_PROFILES, ProfileName } from '../auth/tenant/tenant-context';
+import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 import {
   COVERAGE_RISK_THRESHOLDS,
   CoverageStats,

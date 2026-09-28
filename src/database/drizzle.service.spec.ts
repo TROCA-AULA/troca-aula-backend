@@ -29,13 +29,13 @@ describe('DrizzleService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should create the client and db on onModuleInit', async () => {
-    await service.onModuleInit();
+  it('should create the client and db on onModuleInit', () => {
+    service.onModuleInit();
     expect(service.db).toBeDefined();
   });
 
   it('should close the client on onModuleDestroy', async () => {
-    await service.onModuleInit();
+    service.onModuleInit();
     await expect(service.onModuleDestroy()).resolves.not.toThrow();
   });
 });

@@ -9,6 +9,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 // Ver nota em src/database/drizzle.service.ts sobre `export = postgres` sem
 // esModuleInterop.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- import = require é a forma correta para o CJS `export = postgres` (ver nota acima)
 import postgres = require('postgres');
 import { toPostgresJsConnectionString } from './drizzle.service';
 
