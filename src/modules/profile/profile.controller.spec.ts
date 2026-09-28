@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 describe('ProfileController', () => {
   let controller: ProfileController;
@@ -23,7 +24,13 @@ describe('ProfileController', () => {
           useValue: mockProfileService,
         },
       ],
-    }).compile();
+    })
+      // O controller é protegido por AuthGuard (que depende de JwtService/
+      // ConfigService) — irrelevante para o teste unitário do controller,
+      // então o guard é substituído por um no-op.
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<ProfileController>(ProfileController);
     service = module.get<ProfileService>(ProfileService);
