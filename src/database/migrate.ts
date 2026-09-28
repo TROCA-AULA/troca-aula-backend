@@ -14,9 +14,14 @@ import postgres = require('postgres');
 import { toPostgresJsConnectionString } from './drizzle.service';
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
+  // Migrations precisam do papel DONO das tabelas (ou superusuário): o
+  // papel da aplicação é NOSUPERUSER (e o RLS com FORCE vale até para o
+  // dono), então DDL não roda como ele. `MIGRATION_DATABASE_URL` é
+  // opcional — sem ela, mantém o comportamento antigo (usa DATABASE_URL).
+  const connectionString =
+    process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error('DATABASE_URL não definida');
+    throw new Error('MIGRATION_DATABASE_URL (ou DATABASE_URL) não definida');
   }
 
   const client = postgres(toPostgresJsConnectionString(connectionString), {
