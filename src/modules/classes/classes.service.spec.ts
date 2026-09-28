@@ -95,6 +95,31 @@ describe('ClassesService', () => {
       });
     });
 
+    // Achado real ao validar o guia de simulação contra Postgres: antes
+    // desta correção, MASTER caía no mesmo ramo de DIRETOR/AUXILIAR_ADMIN e
+    // ficava escopado ao primeiro vínculo dele - mesmo tendo um vínculo
+    // formal em alguma escola (ex.: bootstrap), o MASTER precisa continuar
+    // vendo aulas de QUALQUER escola/rede.
+    it('does not scope MASTER to their own primary school link', async () => {
+      const params = { userId: 1 };
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        upsUser: [
+          {
+            schoolId: 1,
+            profileId: 4,
+            approvedAt: new Date(),
+            profile: { name: 'MASTER' },
+          },
+        ],
+      });
+      mockRepository.findAll.mockResolvedValue([]);
+
+      await service.findAll(params as any);
+
+      expect(repository.findAll).toHaveBeenCalledWith(params);
+    });
+
     it('should call repository.findAll with original params if profile is PROFESSOR', async () => {
       const params = { userId: 1 };
       mockDb.query.users.findFirst.mockResolvedValue({

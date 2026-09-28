@@ -48,20 +48,36 @@ export class ClassesRepository {
       conditions.push(eq(classes.available, params.available));
     }
 
+    // Achado de segurança real ao mexer aqui (não introduzido por esta
+    // mudança, já existia): `with: { createdBy: true, ... }` sem `columns`
+    // traz TODAS as colunas de Users, incluindo o hash bcrypt de `password`
+    // - qualquer usuário autenticado que chamasse `GET /classes` via
+    // `createdBy`/`approvedBy`/`registredBy` via a senha (hasheada, mas
+    // ainda assim um dado sensível que não deveria sair da API). Corrigido
+    // aqui excluindo `password` de toda relação de Users nesta query.
     return this.drizzle.db.query.classes.findMany({
       where: and(...conditions),
       with: {
         school: true,
         subject: true,
         createdBy: {
+          columns: { password: false },
           with: {
             upsUser: {
               with: { profile: true },
             },
           },
         },
-        approvedBy: true,
-        registredBy: true,
+        approvedBy: { columns: { password: false } },
+        registredBy: { columns: { password: false } },
+        // Relação existe no schema (`classesRelations.enrolledBy`) desde
+        // sempre, mas nunca era pedida aqui (achado ao tipar o dashboard
+        // legado, P8) - `item.enrolledBy` no frontend sempre veio
+        // `undefined`, então a coluna "Professor" da tabela nunca mostrava
+        // nada, e a condição `!item?.enrolledBy` (decide se mostra o botão
+        // "aceitar"/"deletar") era sempre verdadeira, mesmo pra aulas já
+        // aceitas por alguém.
+        enrolledBy: { columns: { password: false } },
         profile: true,
       },
       orderBy: (fields, { desc }) => [desc(fields.statededAt)],

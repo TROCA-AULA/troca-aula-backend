@@ -40,19 +40,28 @@ export class ClassesService {
 
     if (params.userId) {
       const tenant = await this.tenantContextService.resolve(params.userId);
-      // Gestor = MASTER ou tem QUALQUER vínculo de perfil de gestão - não
-      // só olhar tenant.links[0]. Achado real de bug ao validar contra
-      // Postgres: um professor recém-criado, ainda SEM NENHUM vínculo
-      // aprovado, tinha links=[] -> primaryLink undefined -> a condição
-      // antiga não caía nem no ramo "gestor" nem no ramo "professor", e a
-      // listagem voltava sem filtro nenhum (professor externo via vaga
-      // dentro da janela de prioridade, que é exatamente o que a janela
-      // deveria impedir).
-      const isManager =
-        tenant.isMaster ||
-        tenant.links.some((l) => (MANAGER_PROFILES as string[]).includes(l.profileName));
+      // Gestor não-MASTER (DIRETOR/AUXILIAR_ADMIN) tem QUALQUER vínculo de
+      // perfil de gestão - não só olhar tenant.links[0]. Achado real de bug
+      // ao validar contra Postgres: um professor recém-criado, ainda SEM
+      // NENHUM vínculo aprovado, tinha links=[] -> primaryLink undefined ->
+      // a condição antiga não caía nem no ramo "gestor" nem no ramo
+      // "professor", e a listagem voltava sem filtro nenhum (professor
+      // externo via vaga dentro da janela de prioridade, que é exatamente o
+      // que a janela deveria impedir).
+      const isNonMasterManager = tenant.links.some((l) =>
+        (MANAGER_PROFILES as string[]).includes(l.profileName),
+      );
 
-      if (isManager) {
+      if (tenant.isMaster) {
+        // MASTER enxerga tudo, em qualquer rede/escola (acesso global,
+        // Design Doc) - NÃO escopar ao primeiro vínculo dele, mesmo que ele
+        // também tenha um vínculo formal em alguma escola (ex.: a escola do
+        // bootstrap). Achado real ao validar o guia de simulação: tratar
+        // MASTER igual a um gestor comum aqui fazia o próprio dashboard do
+        // MASTER (contagem de aulas disponíveis) sumir com aulas de
+        // qualquer escola que não fosse a do vínculo dele. currentParams já
+        // é `params` (schoolId explícito do chamador, se houver).
+      } else if (isNonMasterManager) {
         const primaryLink = tenant.links[0];
         currentParams = {
           schoolId: primaryLink?.schoolId,

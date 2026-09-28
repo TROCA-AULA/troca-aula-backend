@@ -39,9 +39,23 @@ export class ClassesController {
     return this.classesService.create(createClassDto);
   }
 
+  // Bug real encontrado ao validar o guia de simulação contra Postgres de
+  // verdade: `userId` era um campo opcional que o CLIENTE decidia mandar ou
+  // não na query string. A tela real de "Aulas Disponíveis" (`/classes`,
+  // via `enrollmentService.getAvailableClasses`) nunca mandava esse
+  // parâmetro — só uma tela legada/duplicada (`dashboard/page.tsx`)
+  // mandava. Resultado: o filtro de matéria e a janela de prioridade da
+  // escola (`ClassesService.findAll`) nunca eram aplicados na tela que os
+  // professores realmente usam — um professor externo via e (pela
+  // listagem) parecia poder se candidatar a qualquer vaga durante a janela
+  // de prioridade, mesmo a candidatura sendo rejeitada com 403 na hora de
+  // confirmar (defesa em profundidade que já existia e continua intacta em
+  // `EnrollmentRequestsService.create`). Corrigido: `userId` agora sempre
+  // vem do token (`req.user.id`), nunca do cliente — não dá mais pra
+  // omitir nem falsificar.
   @Get()
-  findAll(@Query() params: GetClassDto) {
-    return this.classesService.findAll(params);
+  findAll(@Query() params: GetClassDto, @Request() req: AuthenticatedRequest) {
+    return this.classesService.findAll({ ...params, userId: req.user.id });
   }
 
   // Precisa vir ANTES de "@Get(':id')" — senão o Nest tentaria casar

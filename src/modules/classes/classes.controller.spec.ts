@@ -61,11 +61,19 @@ describe('ClassesController', () => {
   });
 
   describe('findAll', () => {
-    it('should call service.findAll', async () => {
-      const params = { userId: 1 } as any;
+    // Achado real (bug corrigido): userId não pode mais vir do cliente na
+    // query string - a tela real de "Aulas Disponíveis" nunca mandava esse
+    // parâmetro, então o filtro de matéria/janela de prioridade nunca era
+    // aplicado nela. Agora vem sempre de req.user.id, sobrescrevendo
+    // qualquer valor que o cliente tenha mandado.
+    it('always overrides userId with the authenticated requester id', async () => {
+      const params = { schoolId: 5, userId: 999 } as any;
+      const req = { user: { id: 1 } };
       mockClassesService.findAll.mockResolvedValue([]);
-      const result = await controller.findAll(params);
-      expect(service.findAll).toHaveBeenCalledWith(params);
+
+      const result = await controller.findAll(params, req);
+
+      expect(service.findAll).toHaveBeenCalledWith({ schoolId: 5, userId: 1 });
       expect(result).toEqual([]);
     });
   });
