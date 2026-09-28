@@ -70,4 +70,36 @@ export class AuthService {
       }),
     };
   }
+
+  // Troca de senha pelo próprio usuário autenticado. Aceita também o
+  // esquema legado como "senha atual" (mesma migração lazy do signIn), para
+  // não travar contas antigas que por algum motivo ainda não relogaram.
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.usersService.findOne(userId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    let isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      isMatch = await bcrypt.compare(
+        this.legacyHash(currentPassword),
+        user.password,
+      );
+    }
+    if (!isMatch) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    const saltRounds = this.config.get<number>('saltRounds') as number;
+    await this.usersService.update(userId, {
+      password: await bcrypt.hash(newPassword, saltRounds),
+    });
+
+    return { message: 'Senha alterada com sucesso' };
+  }
 }

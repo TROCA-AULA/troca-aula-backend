@@ -19,7 +19,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ProfileName } from '../auth/tenant/tenant-context';
+import { ProfileName, MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 import { AssignProfileDto } from './dto/assign-profile.dto';
 import { FindUsersQueryDto } from './dto/find-users-query.dto';
 
@@ -127,6 +127,16 @@ export class UsersController {
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     const updated = await this.usersService.update(+id, updateUserDto);
     return sanitizeUser(updated);
+  }
+
+  // Reset de senha por gestor: MASTER em qualquer conta; DIRETOR/
+  // AUXILIAR_ADMIN só de usuário que compartilhe uma escola gerenciada por
+  // ele (checagem fina no UsersService, já que a rota não tem schoolId).
+  @Post(':id/reset-password')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(...MANAGER_PROFILES)
+  resetPassword(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.usersService.resetPassword(+id, req.user!.id);
   }
 
   @Delete(':id')

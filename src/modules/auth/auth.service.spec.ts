@@ -16,6 +16,7 @@ describe('AuthService', () => {
 
   const mockUsersService = {
     findOneBy: jest.fn(),
+    findOne: jest.fn(),
     update: jest.fn(),
   };
 
@@ -182,6 +183,55 @@ describe('AuthService', () => {
 
       await expect(
         service.signIn('test@test.com', 'wrong-password'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changePassword', () => {
+    it('updates the stored hash when the current password matches', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'old_hash',
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
+
+      const result = await service.changePassword(1, 'current-pass', 'new-pass-123');
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('new-pass-123', 10);
+      expect(mockUsersService.update).toHaveBeenCalledWith(1, {
+        password: 'new_hash',
+      });
+      expect(result).toEqual({ message: 'Senha alterada com sucesso' });
+    });
+
+    it('accepts the legacy scheme as the current password', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'legacy_hash',
+      });
+      (bcrypt.compare as jest.Mock)
+        .mockResolvedValueOnce(false) // esquema novo
+        .mockResolvedValueOnce(true); // esquema legado
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
+
+      await service.changePassword(1, 'current-pass', 'new-pass-123');
+
+      expect(mockUsersService.update).toHaveBeenCalledWith(1, {
+        password: 'new_hash',
+      });
+    });
+
+    it('rejects when the current password is wrong', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'old_hash',
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.changePassword(1, 'wrong-pass', 'new-pass-123'),
       ).rejects.toThrow(UnauthorizedException);
       expect(mockUsersService.update).not.toHaveBeenCalled();
     });
