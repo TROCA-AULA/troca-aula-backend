@@ -53,7 +53,17 @@ export class AuthService {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...userData } = user;
-    const payload = { sub: userData };
+
+    // O JWT já carregava os vínculos escola/perfil do usuário; agora cada
+    // vínculo leva também o `networkId` da escola (rede de ensino) para o
+    // frontend poder consumir o recorte de rede (SchoolContext
+    // .activeNetworkId) sem uma segunda chamada. A relação `school` crua é
+    // removida do payload para não inflar o token.
+    const upsUser = (userData.upsUser ?? []).map(({ school, ...link }) => ({
+      ...link,
+      networkId: school?.networkId ?? null,
+    }));
+    const payload = { sub: { ...userData, upsUser } };
     return {
       access_token: await this.jwtService.signAsync(payload, {
         secret: this.config.get('secret'),

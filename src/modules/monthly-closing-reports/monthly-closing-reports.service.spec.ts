@@ -103,7 +103,7 @@ describe('MonthlyClosingReportsService', () => {
     const managerContext = {
       userId: 2,
       isMaster: false, subjectId: null,
-      links: [{ schoolId: 1, profileId: 1, profileName: ProfileName.DIRETOR, approvedAt: new Date() }],
+      links: [{ schoolId: 1, profileId: 1, profileName: ProfileName.DIRETOR, approvedAt: new Date(), networkId: null }],
     };
 
     it('moves a DRAFT report to REVIEWED when the requester manages the school', async () => {

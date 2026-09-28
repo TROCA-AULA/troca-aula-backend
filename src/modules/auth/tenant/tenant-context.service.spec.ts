@@ -56,10 +56,31 @@ describe('TenantContextService', () => {
         expect.objectContaining({
           with: expect.objectContaining({
             upsUser: expect.objectContaining({
-              with: { profile: true },
+              with: expect.objectContaining({ profile: true }),
             }),
           }),
         }),
+      );
+    });
+
+    it('should resolve each link networkId from the school relation', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        upsUser: [
+          {
+            schoolId: 7,
+            profileId: 3,
+            approvedAt: new Date(),
+            profile: { name: 'PROFESSOR' },
+            school: { networkId: 9 },
+          },
+        ],
+      });
+
+      const tenant = await service.resolve(1);
+
+      expect(tenant.links[0]).toEqual(
+        expect.objectContaining({ schoolId: 7, networkId: 9 }),
       );
     });
   });
@@ -80,6 +101,7 @@ describe('TenantContextService', () => {
             profileId: 1,
             profileName: 'DIRETOR',
             approvedAt: new Date(),
+            networkId: null,
           },
         ],
       };
@@ -96,6 +118,7 @@ describe('TenantContextService', () => {
             profileId: 1,
             profileName: 'DIRETOR',
             approvedAt: new Date(),
+            networkId: null,
           },
         ],
       };
@@ -112,6 +135,7 @@ describe('TenantContextService', () => {
             profileId: 3,
             profileName: 'PROFESSOR',
             approvedAt: new Date(),
+            networkId: null,
           },
         ],
       };
@@ -135,6 +159,7 @@ describe('TenantContextService', () => {
             profileId: 1,
             profileName: 'DIRETOR',
             approvedAt: new Date(),
+            networkId: null,
           },
         ],
       };
@@ -151,6 +176,7 @@ describe('TenantContextService', () => {
             profileId: 3,
             profileName: 'PROFESSOR',
             approvedAt: new Date(),
+            networkId: null,
           },
         ],
       };

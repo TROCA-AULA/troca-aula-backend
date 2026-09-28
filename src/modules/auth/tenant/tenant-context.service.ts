@@ -20,7 +20,10 @@ export class TenantContextService {
       with: {
         upsUser: {
           where: isNotNull(usersProfilesSchools.approvedAt),
-          with: { profile: true },
+          with: {
+            profile: true,
+            school: { columns: { networkId: true } },
+          },
         },
       },
     });
@@ -34,6 +37,7 @@ export class TenantContextService {
       profileId: link.profileId,
       profileName: link.profile?.name ?? '',
       approvedAt: link.approvedAt,
+      networkId: link.school?.networkId ?? null,
     }));
 
     return {

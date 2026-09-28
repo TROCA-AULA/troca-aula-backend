@@ -21,6 +21,8 @@ export interface SchoolLink {
   profileId: number;
   profileName: string;
   approvedAt: Date | null;
+  /** Rede de ensino da escola (Schools.networkId) — resolve sem 2ª query. */
+  networkId: number | null;
 }
 
 // Contexto de tenant resolvido para um usuário autenticado: apenas vínculos

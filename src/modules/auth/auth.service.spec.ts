@@ -82,6 +82,36 @@ describe('AuthService', () => {
       expect(result).toEqual({ access_token: 'token' });
     });
 
+    it('should include each link networkId in the token payload without the raw school relation', async () => {
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_password',
+        upsUser: [
+          {
+            id: 9,
+            userId: 1,
+            schoolId: 7,
+            profileId: 3,
+            approvedAt: null,
+            approvedById: null,
+            school: { networkId: 2 },
+          },
+        ],
+      };
+      mockUsersService.findOneBy.mockResolvedValue(user);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockJwtService.signAsync.mockResolvedValue('token');
+
+      await service.signIn('test@test.com', 'password123');
+
+      const payload = mockJwtService.signAsync.mock.calls[0][0];
+      expect(payload.sub.upsUser).toEqual([
+        expect.objectContaining({ schoolId: 7, networkId: 2 }),
+      ]);
+      expect(payload.sub.upsUser[0].school).toBeUndefined();
+    });
+
     it('should throw UnauthorizedException if user not found', async () => {
       mockUsersService.findOneBy.mockResolvedValue(null);
 

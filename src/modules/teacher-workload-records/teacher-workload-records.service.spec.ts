@@ -130,7 +130,7 @@ describe('TeacherWorkloadRecordsService', () => {
       tenantContextService.resolve.mockResolvedValue({
         userId: 2,
         isMaster: true, subjectId: null,
-        links: [{ schoolId: 1, profileId: 4, profileName: ProfileName.MASTER, approvedAt: new Date() }],
+        links: [{ schoolId: 1, profileId: 4, profileName: ProfileName.MASTER, approvedAt: new Date(), networkId: null }],
       });
       tenantContextService.hasSchoolAccess.mockReturnValue(true);
       repository.remove.mockResolvedValue({ id: 5 } as any);

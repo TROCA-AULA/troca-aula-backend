@@ -114,7 +114,14 @@ export class UsersRepository {
   findOneBy(email: string) {
     return this.drizzle.db.query.users.findFirst({
       where: and(eq(users.email, email), notDeleted(users)),
-      with: { upsUser: true },
+      with: {
+        upsUser: {
+          // `networkId` da escola de cada vínculo entra no JWT (ver
+          // AuthService.signIn) para o frontend operar por rede sem uma
+          // segunda chamada — só a coluna, não a escola inteira.
+          with: { school: { columns: { networkId: true } } },
+        },
+      },
     });
   }
 
