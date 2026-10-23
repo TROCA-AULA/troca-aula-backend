@@ -8,6 +8,7 @@ import {
   professorSchoolGroups,
   schoolTeacherGroups,
   schools,
+  users,
 } from '../../database/schema';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { EligibilityClassInput, EligibilityVerdict } from './eligibility.types';
@@ -17,15 +18,19 @@ interface ProfessorEligibilityContext {
   linkedNetworkIds: Set<number>;
   excludedSchoolIds: Set<number>;
   interestedNetworkIds: Set<number>;
-  /** Melhor (menor delay) grupo do professor por escola. */
-  groupBySchoolId: Map<number, { name: string; delayMinutes: number }>;
+  /** Grupo de maior prioridade (menor número) do professor em cada escola. */
+  groupBySchoolId: Map<
+    number,
+    { name: string; priority: number; delayMinutes: number }
+  >;
 }
 
 interface SchoolEligibilityContext {
   networkId: number;
   ungroupedDelayMinutes: number;
-  priorityWindowHours: number | null;
   hasGroups: boolean;
+  /** Maior tempo de espera entre os grupos da escola (o "último grupo"). */
+  maxGroupDelayMinutes: number;
   /** Redes que a própria rede desta escola interconectou (o que o município permite). */
   allowedNetworkIds: Set<number>;
   /** Subconjunto que a ESCOLA aceita (null = todas as permitidas pelo município). */
@@ -38,12 +43,16 @@ interface SchoolEligibilityContext {
 //     (NetworkInterconnections, direcional);
 //   - a escola pode restringir MAIS (acceptedNetworkIds ⊆ interconexões da
 //     rede) — "o mais restritivo vence";
-//   - a escola cria grupos de professores com delay próprio; quem está no
-//     grupo vê depois do delay do grupo; quem não está em nenhum grupo vê
-//     depois do delay padrão da escola (ungroupedDelayMinutes);
+//   - a escola cria grupos de prioridade (0 = recebe primeiro, 1, 2...),
+//     cada um com o seu tempo de espera a partir da criação da vaga; quem
+//     está num grupo vê a vaga quando o tempo DO SEU grupo passa;
+//   - escola SEM nenhum grupo: todo professor (que passou na regra de
+//     rede) vê a vaga na hora;
+//   - escola COM grupos: quem não está em grupo nenhum é o ÚLTIMO a
+//     receber — só depois do tempo do grupo mais demorado (ou do
+//     ungroupedDelayMinutes da escola, se ele for ainda maior);
 //   - exclusão do próprio professor vence qualquer critério.
-// Escolas que ainda não criaram grupos mantêm o fallback retrocompatível
-// do campo único Schools.priorityWindowHours.
+// (Schools.priorityWindowHours, a janela única antiga, não é mais usada.)
 @Injectable()
 export class EligibilityService {
   constructor(
@@ -99,6 +108,19 @@ export class EligibilityService {
         .filter((networkId): networkId is number => networkId !== null),
     );
 
+    // "Contrato prevalece sobre residência" (Design Doc, 9.3): sem vínculo
+    // aprovado em nenhuma escola, o município onde o professor mora conta
+    // como se fosse o dele para a regra do município.
+    if (tenant.links.length === 0) {
+      const [row] = await this.drizzle.db
+        .select({ residenceNetworkId: users.residenceNetworkId })
+        .from(users)
+        .where(eq(users.id, professorId));
+      if (row?.residenceNetworkId != null) {
+        linkedNetworkIds.add(row.residenceNetworkId);
+      }
+    }
+
     const [exclusions, interests, memberships] = await Promise.all([
       this.drizzle.db.query.professorSchoolExclusions.findMany({
         where: eq(professorSchoolExclusions.professorId, professorId),
@@ -114,6 +136,7 @@ export class EligibilityService {
               id: true,
               schoolId: true,
               name: true,
+              priority: true,
               delayMinutes: true,
             },
           },
@@ -121,17 +144,21 @@ export class EligibilityService {
       }),
     ]);
 
-    const groupBySchoolId = new Map<
-      number,
-      { name: string; delayMinutes: number }
-    >();
+    const groupBySchoolId: ProfessorEligibilityContext['groupBySchoolId'] =
+      new Map();
     for (const membership of memberships) {
       const group = membership.group;
       if (!group) continue;
       const current = groupBySchoolId.get(group.schoolId);
-      if (!current || group.delayMinutes < current.delayMinutes) {
+      const isBetter =
+        !current ||
+        group.priority < current.priority ||
+        (group.priority === current.priority &&
+          group.delayMinutes < current.delayMinutes);
+      if (isBetter) {
         groupBySchoolId.set(group.schoolId, {
           name: group.name,
+          priority: group.priority,
           delayMinutes: group.delayMinutes,
         });
       }
@@ -146,7 +173,18 @@ export class EligibilityService {
     };
   }
 
-  private async loadSchoolContexts(
+  // Leitura privilegiada (defeito D4): a escola da vaga pode ser de OUTRO
+  // município — justamente o caso da interconexão —, e o RLS escondia essa
+  // linha. Antes, "escola não encontrada" virava "vaga visível".
+  private loadSchoolContexts(
+    schoolIds: number[],
+  ): Promise<Map<number, SchoolEligibilityContext>> {
+    return this.drizzle.runPrivileged(() =>
+      this.loadSchoolContextsUnscoped(schoolIds),
+    );
+  }
+
+  private async loadSchoolContextsUnscoped(
     schoolIds: number[],
   ): Promise<Map<number, SchoolEligibilityContext>> {
     const map = new Map<number, SchoolEligibilityContext>();
@@ -157,7 +195,6 @@ export class EligibilityService {
       columns: {
         id: true,
         networkId: true,
-        priorityWindowHours: true,
         ungroupedDelayMinutes: true,
         acceptedNetworkIds: true,
       },
@@ -165,7 +202,7 @@ export class EligibilityService {
 
     const groups = await this.drizzle.db.query.schoolTeacherGroups.findMany({
       where: inArray(schoolTeacherGroups.schoolId, schoolIds),
-      columns: { id: true, schoolId: true },
+      columns: { id: true, schoolId: true, delayMinutes: true },
     });
 
     const networkIds = [...new Set(schoolRows.map((row) => row.networkId))];
@@ -185,11 +222,15 @@ export class EligibilityService {
     }
 
     for (const row of schoolRows) {
+      const schoolGroups = groups.filter((group) => group.schoolId === row.id);
       map.set(row.id, {
         networkId: row.networkId,
         ungroupedDelayMinutes: row.ungroupedDelayMinutes ?? 0,
-        priorityWindowHours: row.priorityWindowHours ?? null,
-        hasGroups: groups.some((group) => group.schoolId === row.id),
+        hasGroups: schoolGroups.length > 0,
+        maxGroupDelayMinutes: Math.max(
+          0,
+          ...schoolGroups.map((group) => group.delayMinutes),
+        ),
         allowedNetworkIds: allowedByOrigin.get(row.networkId) ?? new Set(),
         acceptedNetworkIds: row.acceptedNetworkIds ?? null,
       });
@@ -214,8 +255,14 @@ export class EligibilityService {
       };
     }
 
+    // Falha FECHADA (defeito D4): sem conseguir ler a escola, não há como
+    // aplicar a regra — então a vaga não aparece.
     if (!schoolContext) {
-      return { visible: true };
+      return {
+        visible: false,
+        reason: 'NETWORK',
+        message: 'Esta vaga não está disponível para você',
+      };
     }
 
     // Regra do município/mercado: a rede só exibe suas vagas para as redes
@@ -246,41 +293,33 @@ export class EligibilityService {
       };
     }
 
-    const createdAt = item.createdAt ? new Date(item.createdAt).getTime() : 0;
-    const elapsedMinutes = (now - createdAt) / 60000;
-
-    // Modelo de grupos (criado pela escola).
-    if (schoolContext.hasGroups) {
-      const group = professorContext.groupBySchoolId.get(item.schoolId);
-      const delayMinutes =
-        group?.delayMinutes ?? schoolContext.ungroupedDelayMinutes;
-      if (elapsedMinutes < delayMinutes) {
-        const remaining = Math.ceil(delayMinutes - elapsedMinutes);
-        return {
-          visible: false,
-          reason: 'PRIORITY_WINDOW',
-          message: group
-            ? `Esta vaga abre para o grupo "${group.name}" em ${remaining} minuto(s)`
-            : `Esta vaga abre em ${remaining} minuto(s)`,
-        };
-      }
-      return { visible: true, groupName: group?.name };
-    }
-
-    // Fallback retrocompatível: escola sem grupos usa a janela única.
-    if (professorContext.linkedSchoolIds.has(item.schoolId)) {
+    // Escola sem grupos de prioridade: todos recebem na hora.
+    if (!schoolContext.hasGroups) {
       return { visible: true };
     }
-    const windowHours = schoolContext.priorityWindowHours;
-    if (windowHours && elapsedMinutes < windowHours * 60) {
-      const remaining = Math.ceil(windowHours * 60 - elapsedMinutes);
+
+    const createdAt = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+    const elapsedMinutes = (now - createdAt) / 60000;
+    const group = professorContext.groupBySchoolId.get(item.schoolId);
+
+    // Sem grupo numa escola que tem grupos = último a receber.
+    const delayMinutes = group
+      ? group.delayMinutes
+      : Math.max(
+          schoolContext.maxGroupDelayMinutes,
+          schoolContext.ungroupedDelayMinutes,
+        );
+
+    if (elapsedMinutes < delayMinutes) {
+      const remaining = Math.ceil(delayMinutes - elapsedMinutes);
       return {
         visible: false,
         reason: 'PRIORITY_WINDOW',
-        message: `Esta vaga está em janela de prioridade para professores da escola (abre em ${remaining} minuto(s))`,
+        message: group
+          ? `Esta vaga abre para o seu grupo "${group.name}" (prioridade ${group.priority}) em ${remaining} minuto(s)`
+          : `Esta vaga abre para professores sem grupo em ${remaining} minuto(s), depois de todos os grupos de prioridade da escola`,
       };
     }
-
-    return { visible: true };
+    return { visible: true, groupName: group?.name };
   }
 }

@@ -29,7 +29,9 @@ describe('EmailService', () => {
     expect(service.enabled).toBe(false);
     expect(nodemailer.createTransport).not.toHaveBeenCalled();
 
-    await service.send({ to: 'a@b.com', subject: 'x', text: 'y' });
+    await expect(
+      service.send({ to: 'a@b.com', subject: 'x', text: 'y' }),
+    ).resolves.toBe(false);
     expect(sendMail).not.toHaveBeenCalled();
   });
 
@@ -43,11 +45,13 @@ describe('EmailService', () => {
     });
 
     expect(service.enabled).toBe(true);
-    await service.send({
-      to: 'maria@escola.com',
-      subject: 'Aprovada',
-      text: 'ok',
-    });
+    await expect(
+      service.send({
+        to: 'maria@escola.com',
+        subject: 'Aprovada',
+        text: 'ok',
+      }),
+    ).resolves.toBe(true);
 
     expect(sendMail).toHaveBeenCalledWith({
       from: 'Troca Aula <no-reply@exemplo.com>',
@@ -63,6 +67,6 @@ describe('EmailService', () => {
 
     await expect(
       service.send({ to: 'a@b.com', subject: 'x', text: 'y' }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 });

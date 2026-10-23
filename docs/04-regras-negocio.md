@@ -265,12 +265,13 @@ flowchart TD
 ```
 
 **Validacoes** (todas reais, verificadas no codigo atual):
-- `classId` deve existir e estar `available`
+- `classId` deve existir, estar `available` e ainda nao ter acontecido
 - Nao pode ja existir candidatura PENDING do mesmo professor para a mesma aula
 - `professor.subjectId` deve ser igual a `class.subjectId`
-- Se a escola tiver `priorityWindowHours` configurado e a janela ainda nao fechou, o professor precisa ter vinculo com a escola (ver Design Doc, Secao 9.2)
-- Nao pode haver conflito de horario com outra substituicao ja aprovada do mesmo professor
-- Nao pode exceder `substitutionLimitPerSemester` do professor (contagem de aprovacoes no semestre)
+- O professor precisa passar por a regra de prioridade da escola (grupos com prioridade e espera; sem grupo = ultimo; escola sem grupos = todos na hora), a regra do municipio (rede propria ou interconectada) e as exclusoes do professor (ver Design Doc, Secao 9 e `docs/status-funcionalidades.md`)
+- Nao pode haver conflito de horario (datas e horas reais; encostar nao conta) com outra aula ja atribuida (aprovada) ao mesmo professor
+- Nao pode exceder `substitutionLimitPerSemester` do professor (contagem de aprovacoes no semestre; `null`/`0` = sem limite)
+- Na aprovacao: a aula nao pode ja ter outra candidatura aprovada
 
 ---
 

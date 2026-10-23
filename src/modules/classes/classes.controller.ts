@@ -96,13 +96,7 @@ export class ClassesController {
     return this.classesService.remove(+id, req.user.id);
   }
 
-  @Post(':id/enroll')
-  enroll(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.classesService.enroll(+id, req.user.id);
-  }
-
-  @Delete(':id/enroll')
-  unenroll(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.classesService.unenroll(+id, req.user.id);
-  }
+  // (Rotas antigas POST/DELETE /classes/:id/enroll removidas — defeito D21:
+  // deixavam qualquer pessoa logada assumir uma aula sem candidatura nem
+  // aprovação. O fluxo oficial é /enrollment-requests.)
 }

@@ -158,7 +158,8 @@ classDiagram
         +Int networkId
         +String name
         +Int substitutionLimitPerSemester
-        +Int priorityWindowHours
+        +Int ungroupedDelayMinutes
+        +Json acceptedNetworkIds
         +DateTime createdAt
         +DateTime deletedAt
     }
@@ -334,6 +335,7 @@ flowchart TD
 | password | text | Sim | Senha hasheada (bcrypt) |
 | subjectId | integer | Nao | FK Subjects — materia que leciona |
 | substitutionLimitPerSemester | integer | Nao | Limite individual de substituicoes por semestre (nullable = sem limite) |
+| residenceNetworkId | integer | Nao | FK Networks (on delete set null) — municipio onde o professor mora. So conta para quem nao tem vinculo aprovado com escola (contrato prevalece). Migration 0009 |
 | createdAt | timestamp(3) | Sim | Data de criacao |
 | deletedAt | timestamp(3) | Nao | Soft delete (helper `notDeleted()`) |
 
@@ -374,7 +376,9 @@ Fronteira real do tenant (ADR-004). Sem soft delete por enquanto.
 | networkId | integer | Sim | FK Networks (on delete restrict) |
 | name | text | Sim | Nome da escola |
 | substitutionLimitPerSemester | integer | Nao | Limite configurado por escola (o gate hoje usa o limite do professor) |
-| priorityWindowHours | integer | Nao | Janela de prioridade da propria escola; NULL = abre para todos imediatamente |
+| priorityWindowHours | integer | Nao | **Obsoleto, sem uso.** Substituido pelos grupos de prioridade (ver abaixo) |
+| ungroupedDelayMinutes | integer | Sim (default 0) | Espera minima de quem esta **sem grupo**; o efetivo e `max(maior espera dos grupos, este valor)` |
+| acceptedNetworkIds | jsonb | Nao | Redes (municipios) cujos professores a escola aceita, dentro do que a rede liberou. NULL = todas as interconectadas |
 | createdAt | timestamp(3) | Sim | Data de criacao |
 | deletedAt | timestamp(3) | Nao | Soft delete |
 
@@ -428,6 +432,7 @@ Fronteira real do tenant (ADR-004). Sem soft delete por enquanto.
 | classId | integer | Sim | FK Classes |
 | professorId | integer | Sim | FK Users |
 | status | text | Sim | Default `PENDING` (nunca foi enum nativo do Postgres) |
+| rejectionReason | text | Nao | Motivo da rejeicao (opcional, ate 500 caracteres). Migration 0009 |
 | createdAt | timestamp(3) | Sim | Data de criacao |
 | updatedAt | timestamp(3) | Sim | Atualizacao (setada explicitamente em cada update — Drizzle nao tem `@updatedAt`) |
 
@@ -644,3 +649,18 @@ O baseline da migração Prisma -> Drizzle (`0000_...`) foi registrado manualmen
 ## Schema Completo
 
 A definição completa (tabelas, colunas, FKs, índices e relations) está em [`src/database/schema.ts`](../src/database/schema.ts). `prisma/schema.prisma` e `prisma/migrations/` continuam no repositório apenas como referência histórica da era pré-Drizzle.
+
+---
+
+## Tabelas de prioridade, interconexao e coordenacao (Fase 5)
+
+| Tabela | Para que serve | Colunas principais |
+|---|---|---|
+| `SchoolTeacherGroups` | Grupos de prioridade de cada escola | `schoolId`, `name` (unico na escola), `priority` (0 recebe primeiro), `delayMinutes` (espera a partir da criacao da vaga) |
+| `ProfessorSchoolGroups` | Quem esta em cada grupo | `professorId`, `groupId` |
+| `NetworkInterconnections` | Quais redes podem ver as vagas de uma rede (direcional) | `networkId`, `allowedNetworkId` |
+| `ProfessorNetworkInterests` | Redes em que o professor quer receber vagas | `professorId`, `networkId` |
+| `ProfessorSchoolExclusions` | Escolas de que o professor nao quer receber vagas (vence qualquer regra) | `professorId`, `schoolId` |
+| `UserNetworkLinks` | Coordenador municipal ↔ rede | `userId`, `networkId` (PK composta), `approvedAt`, `approvedById` |
+
+Regra: um grupo de prioridade maior nunca abre antes de um de prioridade menor (validado no service). Sem grupos na escola, todos veem a vaga na hora; com grupos, quem esta sem grupo e o ultimo.

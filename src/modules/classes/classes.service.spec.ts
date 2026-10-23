@@ -1,9 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ClassesRepository } from './classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
@@ -41,6 +37,7 @@ describe('ClassesService', () => {
     update: jest.Mock;
     query: {
       users: { findFirst: jest.Mock; findMany: jest.Mock };
+      schools: { findMany: jest.Mock };
     };
   };
 
@@ -53,6 +50,7 @@ describe('ClassesService', () => {
           findFirst: jest.fn(),
           findMany: jest.fn().mockResolvedValue([]),
         },
+        schools: { findMany: jest.fn().mockResolvedValue([]) },
       },
     };
 
@@ -60,7 +58,13 @@ describe('ClassesService', () => {
       providers: [
         ClassesService,
         { provide: ClassesRepository, useValue: mockRepository },
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
         // TenantContextService real (não mockado): só depende do
         // DrizzleService acima, então os testes controlam seu
         // comportamento mockando mockDb.query.users.findFirst, igual ao
@@ -125,7 +129,7 @@ describe('ClassesService', () => {
   });
 
   describe('findAll', () => {
-    it('should call repository.findAll with user schoolId if profile is not PROFESSOR', async () => {
+    it('gestor vê as escolas que gerencia (todas, não só a primeira)', async () => {
       const params = { userId: 1 };
       mockDb.query.users.findFirst.mockResolvedValue({
         id: 1,
@@ -143,9 +147,128 @@ describe('ClassesService', () => {
       await service.findAll(params);
 
       expect(repository.findAll).toHaveBeenCalledWith({
-        schoolId: 10,
+        schoolIds: [10],
         available: undefined,
       });
+    });
+
+    const coordinatorUser = {
+      id: 1,
+      upsUser: [
+        {
+          schoolId: 10,
+          profileId: 1,
+          approvedAt: new Date(),
+          profile: { name: 'DIRETOR' },
+        },
+        {
+          schoolId: 11,
+          profileId: 2,
+          approvedAt: new Date(),
+          profile: { name: 'AUXILIAR_ADMIN' },
+        },
+      ],
+    };
+
+    it('gestor de várias escolas pode filtrar por uma delas', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(coordinatorUser);
+      mockRepository.findAll.mockResolvedValue([]);
+
+      await service.findAll({ userId: 1, schoolId: 11, available: true });
+
+      expect(repository.findAll).toHaveBeenCalledWith({
+        schoolIds: [11],
+        available: true,
+      });
+    });
+
+    it('gestor que pede escola que NÃO gerencia recebe as dele', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(coordinatorUser);
+      mockRepository.findAll.mockResolvedValue([]);
+
+      await service.findAll({ userId: 1, schoolId: 99 });
+
+      expect(repository.findAll).toHaveBeenCalledWith({
+        schoolIds: [10, 11],
+        available: undefined,
+      });
+    });
+
+    const professorUser = (subjectId: number | null) => ({
+      id: 1,
+      subjectId,
+      upsUser: [
+        {
+          schoolId: 10,
+          profileId: 3,
+          approvedAt: new Date(),
+          profile: { name: 'PROFESSOR' },
+        },
+      ],
+    });
+
+    it('professor sem disciplina cadastrada não vê aula nenhuma', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(professorUser(null));
+      mockRepository.findAll.mockResolvedValue([
+        { id: 1, subjectId: 5, schoolId: 10, school: { id: 10 } },
+      ]);
+
+      await expect(service.findAll({ userId: 1 })).resolves.toEqual([]);
+    });
+
+    it('professor NÃO vê aula que já aconteceu, exceto a que é dele (D11)', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(professorUser(5));
+      const past = new Date(Date.now() - 86_400_000);
+      const future = new Date(Date.now() + 86_400_000);
+      mockRepository.findAll.mockResolvedValue([
+        { id: 1, subjectId: 5, schoolId: 10, statededAt: past, school: {} },
+        { id: 2, subjectId: 5, schoolId: 10, statededAt: future, school: {} },
+        {
+          id: 3,
+          subjectId: 5,
+          schoolId: 10,
+          statededAt: past,
+          enrolledById: 1,
+          school: {},
+        },
+      ]);
+
+      const result = await service.findAll({ userId: 1 });
+
+      expect(result.map((item) => item.id)).toEqual([2, 3]);
+    });
+
+    it('completa o nome da escola de outro município (escondida pelo RLS) (D4)', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(professorUser(5));
+      mockRepository.findAll.mockResolvedValue([
+        { id: 1, subjectId: 5, schoolId: 50, school: null },
+        {
+          id: 2,
+          subjectId: 5,
+          schoolId: 10,
+          school: { id: 10, name: 'Já veio' },
+        },
+      ]);
+      mockDb.query.schools.findMany.mockResolvedValue([
+        { id: 50, name: 'EMEF Vizinha', networkId: 3 },
+      ]);
+
+      const result = await service.findAll({ userId: 1 });
+
+      expect(result).toEqual([
+        {
+          id: 1,
+          subjectId: 5,
+          schoolId: 50,
+          school: { id: 50, name: 'EMEF Vizinha', networkId: 3 },
+        },
+        {
+          id: 2,
+          subjectId: 5,
+          schoolId: 10,
+          school: { id: 10, name: 'Já veio' },
+        },
+      ]);
     });
 
     // Achado real ao validar o guia de simulação contra Postgres: antes
@@ -440,59 +563,6 @@ describe('ClassesService', () => {
 
       await expect(service.remove(1, 5)).rejects.toThrow(ForbiddenException);
       expect(repository.remove).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('enroll', () => {
-    it('should enroll the professor when the class is free', async () => {
-      mockDb.select
-        .mockReturnValueOnce(
-          createDrizzleChainMock([{ id: 1, enrolledById: null }]),
-        )
-        .mockReturnValueOnce(createDrizzleChainMock([{ id: 2 }]));
-      mockDb.update.mockReturnValue(
-        createDrizzleChainMock([{ id: 1, enrolledById: 2 }]),
-      );
-
-      const result = await service.enroll(1, 2);
-
-      expect(result).toEqual({ id: 1, enrolledById: 2 });
-    });
-
-    it('should throw NotFoundException when class does not exist', async () => {
-      mockDb.select.mockReturnValueOnce(createDrizzleChainMock([]));
-      await expect(service.enroll(1, 2)).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw BadRequestException when class already enrolled by another professor', async () => {
-      mockDb.select
-        .mockReturnValueOnce(
-          createDrizzleChainMock([{ id: 1, enrolledById: 99 }]),
-        )
-        .mockReturnValueOnce(createDrizzleChainMock([{ id: 2 }]));
-      await expect(service.enroll(1, 2)).rejects.toThrow(BadRequestException);
-    });
-  });
-
-  describe('unenroll', () => {
-    it('should unenroll the professor who is currently enrolled', async () => {
-      mockDb.select.mockReturnValueOnce(
-        createDrizzleChainMock([{ id: 1, enrolledById: 2 }]),
-      );
-      mockDb.update.mockReturnValue(
-        createDrizzleChainMock([{ id: 1, enrolledById: null }]),
-      );
-
-      const result = await service.unenroll(1, 2);
-
-      expect(result).toEqual({ id: 1, enrolledById: null });
-    });
-
-    it('should throw ForbiddenException when another professor tries to unenroll', async () => {
-      mockDb.select.mockReturnValueOnce(
-        createDrizzleChainMock([{ id: 1, enrolledById: 2 }]),
-      );
-      await expect(service.unenroll(1, 99)).rejects.toThrow(ForbiddenException);
     });
   });
 

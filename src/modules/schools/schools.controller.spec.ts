@@ -49,8 +49,8 @@ describe('SchoolsController', () => {
     it('should call service.create', async () => {
       const dto = { name: 'School A' } as any;
       mockSchoolsService.create.mockResolvedValue({ id: 1, ...dto });
-      const result = await controller.create(dto);
-      expect(service.create).toHaveBeenCalledWith(dto);
+      const result = await controller.create(dto, { user: { id: 7 } });
+      expect(service.create).toHaveBeenCalledWith(dto, 7);
       expect(result).toEqual({ id: 1, ...dto });
     });
   });
@@ -79,8 +79,8 @@ describe('SchoolsController', () => {
     it('should call service.update', async () => {
       const dto = { name: 'School Updated' } as any;
       mockSchoolsService.update.mockResolvedValue({ id: 1, ...dto });
-      const result = await controller.update('1', dto);
-      expect(service.update).toHaveBeenCalledWith(1, dto);
+      const result = await controller.update('1', dto, { user: { id: 7 } });
+      expect(service.update).toHaveBeenCalledWith(1, dto, 7);
       expect(result).toEqual({ id: 1, ...dto });
     });
   });

@@ -87,7 +87,13 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SchoolTeacherGroupsService,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
         { provide: TenantContextService, useValue: mockTenantContext },
       ],
     }).compile();
@@ -123,11 +129,10 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
       expect(error.message).toBe('Escola não encontrada');
     });
 
-    it('retorna grupos, interconexões e fallbacks retrocompatíveis', async () => {
+    it('retorna grupos (com prioridade), interconexões com nome e quando quem está sem grupo recebe', async () => {
       mockDb.query.schools.findFirst.mockResolvedValue({
         id: 5,
         networkId: 1,
-        priorityWindowHours: null,
         ungroupedDelayMinutes: 30,
         acceptedNetworkIds: null,
       });
@@ -135,13 +140,18 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
         {
           id: 10,
           name: 'Professores da casa',
+          priority: 0,
           delayMinutes: 0,
           members: [{ professorId: 7 }],
         },
-        { id: 11, name: 'Novatos', delayMinutes: 60 },
+        { id: 11, name: 'Novatos', priority: 1, delayMinutes: 60 },
       ]);
       mockDb.query.networkInterconnections.findMany.mockResolvedValue([
-        { originNetworkId: 1, allowedNetworkId: 2 },
+        {
+          originNetworkId: 1,
+          allowedNetworkId: 2,
+          allowedNetwork: { id: 2, name: 'Guariba' },
+        },
         { originNetworkId: 1, allowedNetworkId: 3 },
       ]);
 
@@ -150,17 +160,28 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
       expect(result).toEqual({
         schoolId: 5,
         ungroupedDelayMinutes: 30,
-        fallbackPriorityWindowHours: null,
+        ungroupedEffectiveDelayMinutes: 60,
         allowedNetworkIds: [2, 3],
+        allowedNetworks: [
+          { id: 2, name: 'Guariba' },
+          { id: 3, name: null },
+        ],
         acceptedNetworkIds: null,
         groups: [
           {
             id: 10,
             name: 'Professores da casa',
+            priority: 0,
             delayMinutes: 0,
             professorIds: [7],
           },
-          { id: 11, name: 'Novatos', delayMinutes: 60, professorIds: [] },
+          {
+            id: 11,
+            name: 'Novatos',
+            priority: 1,
+            delayMinutes: 60,
+            professorIds: [],
+          },
         ],
       });
       expect(mockDb.query.schoolTeacherGroups.findMany).toHaveBeenCalledWith(
@@ -168,18 +189,17 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
       );
     });
 
-    it('preserva priorityWindowHours e acceptedNetworkIds quando definidos', async () => {
+    it('escola sem grupos: quem está sem grupo recebe na hora (null) e acceptedNetworkIds é preservado', async () => {
       mockDb.query.schools.findFirst.mockResolvedValue({
         id: 5,
         networkId: 2,
-        priorityWindowHours: 24,
-        ungroupedDelayMinutes: 0,
+        ungroupedDelayMinutes: 90,
         acceptedNetworkIds: [3],
       });
 
       const result = await service.get(5, 1);
 
-      expect(result.fallbackPriorityWindowHours).toBe(24);
+      expect(result.ungroupedEffectiveDelayMinutes).toBeNull();
       expect(result.acceptedNetworkIds).toEqual([3]);
       expect(result.groups).toEqual([]);
       expect(result.allowedNetworkIds).toEqual([]);
@@ -226,6 +246,7 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
       expect(insert.values).toHaveBeenCalledWith({
         schoolId: 5,
         name: 'Professores da casa',
+        priority: 0,
         delayMinutes: 15,
       });
       expect(insert.onConflictDoNothing).toHaveBeenCalled();
@@ -234,7 +255,96 @@ describe('SchoolTeacherGroupsService (Fase 5 — grupos por escola)', () => {
     });
   });
 
+  describe('createGroup — ordem de prioridade', () => {
+    beforeEach(() => {
+      jest.spyOn(service, 'get').mockResolvedValue({ schoolId: 5 } as never);
+    });
+
+    it('sem prioridade informada, o grupo entra depois do último', async () => {
+      mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+        { id: 1, name: 'A', priority: 0, delayMinutes: 0 },
+        { id: 2, name: 'B', priority: 3, delayMinutes: 30 },
+      ]);
+      const insert = chain([{ id: 3 }]);
+      mockDb.insert.mockReturnValue(insert);
+
+      await service.createGroup(5, { name: 'C', delayMinutes: 60 }, 1);
+
+      expect(insert.values).toHaveBeenCalledWith(
+        expect.objectContaining({ priority: 4 }),
+      );
+    });
+
+    it('recusa prioridade maior abrindo ANTES de uma prioridade menor', async () => {
+      mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+        { id: 1, name: 'Casa', priority: 1, delayMinutes: 60 },
+      ]);
+
+      const error = await capture(
+        service.createGroup(
+          5,
+          { name: 'Pressa', priority: 2, delayMinutes: 30 },
+          1,
+        ),
+      );
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error.message).toContain('prioridade 2');
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('aceita mesma prioridade com tempos diferentes', async () => {
+      mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+        { id: 1, name: 'Casa', priority: 1, delayMinutes: 60 },
+      ]);
+      mockDb.insert.mockReturnValue(chain([{ id: 2 }]));
+
+      await expect(
+        service.createGroup(
+          5,
+          { name: 'Par', priority: 1, delayMinutes: 10 },
+          1,
+        ),
+      ).resolves.toEqual({ schoolId: 5 });
+    });
+  });
+
   describe('updateGroup', () => {
+    it('recusa mudar o tempo se a ordem de prioridade ficar invertida', async () => {
+      mockDb.query.schoolTeacherGroups.findFirst.mockResolvedValue({
+        id: 9,
+        schoolId: 5,
+      });
+      mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+        { id: 8, name: 'Casa', priority: 0, delayMinutes: 0 },
+        { id: 9, name: 'Rede', priority: 1, delayMinutes: 60 },
+      ]);
+
+      const error = await capture(
+        service.updateGroup(5, 8, { delayMinutes: 120 }, 1),
+      );
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('atualiza a prioridade quando informada', async () => {
+      mockDb.query.schoolTeacherGroups.findFirst.mockResolvedValue({
+        id: 9,
+        schoolId: 5,
+      });
+      mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+        { id: 9, name: 'Rede', priority: 1, delayMinutes: 60 },
+      ]);
+      const update = chain([{ id: 9 }]);
+      mockDb.update.mockReturnValue(update);
+      jest.spyOn(service, 'get').mockResolvedValue({ schoolId: 5 } as never);
+
+      await service.updateGroup(5, 9, { priority: 0 }, 1);
+
+      expect(update.set).toHaveBeenCalledWith({ priority: 0 });
+    });
+
     it('lança ForbiddenException quando o solicitante não é gestor da escola', async () => {
       mockTenantContext.hasSchoolAccess.mockReturnValue(false);
 
@@ -551,9 +661,16 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
     ),
   };
 
+  const mockTenant = {
+    resolve: jest.fn(),
+    canManageNetwork: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    mockTenant.resolve.mockResolvedValue({ userId: 1 });
+    mockTenant.canManageNetwork.mockReturnValue(true);
     mockDb.query.networks.findFirst.mockResolvedValue(null);
     mockDb.query.networks.findMany.mockResolvedValue([]);
     mockDb.query.networkInterconnections.findMany.mockResolvedValue([]);
@@ -566,7 +683,14 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NetworkInterconnectionsService,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
+        { provide: TenantContextService, useValue: mockTenant },
       ],
     }).compile();
 
@@ -575,9 +699,32 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
     );
   });
 
+  describe('permissão', () => {
+    it('quem não gerencia a rede (nem MASTER nem coordenador dela) recebe 403', async () => {
+      mockTenant.canManageNetwork.mockReturnValue(false);
+
+      const error = await capture(service.get(1, 7));
+
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(mockTenant.resolve).toHaveBeenCalledWith(7);
+      expect(mockDb.query.networks.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('replace também confere a rede antes de gravar', async () => {
+      mockTenant.canManageNetwork.mockReturnValue(false);
+
+      const error = await capture(
+        service.replace(1, { allowedNetworkIds: [2] }, 7),
+      );
+
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('get', () => {
     it('lança NotFoundException quando a rede não existe', async () => {
-      const error = await capture(service.get(1));
+      const error = await capture(service.get(1, 1));
 
       expect(error).toBeInstanceOf(NotFoundException);
       expect(error.message).toBe('Rede não encontrada');
@@ -597,7 +744,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
         { originNetworkId: 1, allowedNetworkId: 3, allowedNetwork: null },
       ]);
 
-      const result = await service.get(1);
+      const result = await service.get(1, 1);
 
       expect(result).toEqual({
         networkId: 1,
@@ -611,7 +758,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
     it('retorna lista vazia quando a rede não interconecta com ninguém', async () => {
       mockDb.query.networks.findFirst.mockResolvedValue({ id: 1 });
 
-      const result = await service.get(1);
+      const result = await service.get(1, 1);
 
       expect(result).toEqual({ networkId: 1, interconnections: [] });
     });
@@ -620,7 +767,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
   describe('replace', () => {
     it('lança NotFoundException quando a rede não existe', async () => {
       const error = await capture(
-        service.replace(1, { allowedNetworkIds: [2] }),
+        service.replace(1, { allowedNetworkIds: [2] }, 1),
       );
 
       expect(error).toBeInstanceOf(NotFoundException);
@@ -631,7 +778,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
       mockDb.query.networks.findFirst.mockResolvedValue({ id: 1 });
 
       const error = await capture(
-        service.replace(1, { allowedNetworkIds: [1, 1] }),
+        service.replace(1, { allowedNetworkIds: [1, 1] }, 1),
       );
 
       expect(error).toBeInstanceOf(BadRequestException);
@@ -646,7 +793,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
       mockDb.query.networks.findMany.mockResolvedValue([{ id: 2 }]);
 
       const error = await capture(
-        service.replace(1, { allowedNetworkIds: [2, 3] }),
+        service.replace(1, { allowedNetworkIds: [2, 3] }, 1),
       );
 
       expect(error).toBeInstanceOf(NotFoundException);
@@ -662,7 +809,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
         .spyOn(service, 'get')
         .mockResolvedValue({ networkId: 1, interconnections: [] });
 
-      const result = await service.replace(1, { allowedNetworkIds: [] });
+      const result = await service.replace(1, { allowedNetworkIds: [] }, 1);
 
       expect(mockDb.query.networks.findMany).not.toHaveBeenCalled();
       expect(remove.where).toHaveBeenCalled();
@@ -681,7 +828,7 @@ describe('NetworkInterconnectionsService (Fase 5 — interconexões entre redes)
         .spyOn(service, 'get')
         .mockResolvedValue({ networkId: 1, interconnections: [] });
 
-      await service.replace(1, { allowedNetworkIds: [2, 3, 2] });
+      await service.replace(1, { allowedNetworkIds: [2, 3, 2] }, 1);
 
       expect(insert.values).toHaveBeenCalledWith([
         { originNetworkId: 1, allowedNetworkId: 2 },

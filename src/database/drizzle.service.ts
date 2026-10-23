@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 // O pacote `postgres` usa `export = postgres` (CJS puro) — sem
 // `esModuleInterop` no tsconfig deste projeto, `import postgres from
 // 'postgres'` compila para `postgres_1.default`, que não existe em runtime
@@ -36,6 +37,8 @@ export function toPostgresJsConnectionString(databaseUrl: string): string {
 export class DrizzleService implements OnModuleInit, OnModuleDestroy {
   private client!: postgres.Sql;
   private globalDb!: PostgresJsDatabase<typeof schema>;
+  private privilegedClient?: postgres.Sql;
+  private privilegedDb?: PostgresJsDatabase<typeof schema>;
   // Contexto por request para o RLS (ver RlsContextInterceptor): quando o
   // interceptor reserva uma conexão e seta as GUCs de sessão, `db` passa a
   // apontar para essa conexão durante o request; fora dele, o pool global.
@@ -140,7 +143,36 @@ export class DrizzleService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Leitura que precisa enxergar escolas/redes FORA do recorte do usuário
+  // (correção dos defeitos D4/D5): o motor de elegibilidade precisa ler a
+  // escola de outro município para decidir se a vaga aparece, e o login
+  // precisa da rede de cada vínculo antes de existir um usuário no request.
+  // Com o RLS, essas leituras voltavam vazias e o código tratava "não achei
+  // a escola" como "pode ver" (vazamento) ou gravava networkId null no token.
+  //
+  // Roda `fn` numa transação de um pool SEPARADO e pequeno, com
+  // `app.is_master=true` LOCAL à transação (some no COMMIT). Pool separado
+  // para não disputar conexão com os requests (cada request já segura uma
+  // conexão reservada — reaproveitar o mesmo pool podia travar sob carga).
+  // Use só para LEITURAS pontuais de dados de diretório (ids, nomes, rede,
+  // configuração de prioridade) — nunca para devolver listas inteiras ao
+  // cliente.
+  async runPrivileged<T>(fn: () => Promise<T>): Promise<T> {
+    if (!this.privilegedDb) {
+      this.privilegedClient = postgres(
+        toPostgresJsConnectionString(process.env.DATABASE_URL as string),
+        { max: 4 },
+      );
+      this.privilegedDb = drizzle(this.privilegedClient, { schema });
+    }
+    return this.privilegedDb.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.is_master', 'true', true)`);
+      return this.als.run(tx, fn);
+    });
+  }
+
   async onModuleDestroy() {
     await this.client?.end();
+    await this.privilegedClient?.end();
   }
 }

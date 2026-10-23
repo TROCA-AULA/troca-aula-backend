@@ -40,3 +40,78 @@ jobs:
     - name: Run E2E Tests
       # E2E de wiring: o spec define um DATABASE_URL sintatico e nao toca o banco
       run: pnpm run test:e2e
+
+  # Teste de ponta a ponta com banco REAL (inclui o RLS): sobe um Postgres,
+  # aplica as migrations como dono, cria o papel da aplicação (NOSUPERUSER,
+  # que é o que o RLS filtra), aplica o SQL base (MASTER + catálogos), liga
+  # a API e roda o roteiro test/api/testar-api.sh (~220 verificações).
+  api-real-db:
+    runs-on: ubuntu-latest
+    needs: build
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci_owner
+          POSTGRES_PASSWORD: ci_owner_pw
+          POSTGRES_DB: troca_aula_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_owner -d troca_aula_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGPASSWORD: ci_owner_pw
+      MIGRATION_DATABASE_URL: postgresql://ci_owner:ci_owner_pw@localhost:5432/troca_aula_ci
+      DATABASE_URL: postgresql://troca_aula_app:ci_app_pw@localhost:5432/troca_aula_ci
+      SECRET: ci-secret-only-for-tests
+      PORT: 5000
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Build
+      run: pnpm run build
+
+    - name: Migrations (papel dono)
+      run: pnpm run db:migrate
+
+    - name: Papel da aplicação (RLS) e SQL base
+      run: |
+        psql -h localhost -U ci_owner -d troca_aula_ci -v ON_ERROR_STOP=1 \
+          -v app_password='ci_app_pw' -f scripts/setup-rls-role.sql
+        psql -h localhost -U ci_owner -d troca_aula_ci -v ON_ERROR_STOP=1 \
+          -f test/api/01-base-producao.sql
+
+    - name: Subir a API
+      run: |
+        nohup node dist/main.js > api.log 2>&1 &
+        for i in $(seq 1 60); do
+          curl -sf http://localhost:5000/health && exit 0
+          sleep 1
+        done
+        cat api.log
+        exit 1
+
+    - name: Roteiro de API contra o banco real
+      run: API=http://localhost:5000 bash test/api/testar-api.sh
+
+    - name: Log da API (se falhar)
+      if: failure()
+      run: cat api.log

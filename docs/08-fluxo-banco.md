@@ -74,7 +74,7 @@ flowchart TB
 | `Users` | Usuarios; `subjectId` (materia) e `substitutionLimitPerSemester` (limite de substituicoes) |
 | `Subjects` | Disciplinas/materias |
 | `Networks` | Redes de ensino (fronteira de isolamento multi-tenant) |
-| `Schools` | Escolas; `networkId` (rede), `priorityWindowHours` (janela de prioridade) e `substitutionLimitPerSemester` |
+| `Schools` | Escolas; `networkId` (rede), `priorityWindowHours` (obsoleto, sem uso), `ungroupedDelayMinutes` (espera de quem esta sem grupo) e `substitutionLimitPerSemester` |
 | `UsersProfilesSchools` | Vinculos usuario x perfil x escola (PK composta), com `approvedAt`/`approvedById` |
 | `Classes` | Aulas/turmas; `available` (vaga), `enrolledById` (professor que assumiu), `createdByd`, horarios |
 | `EnrollmentRequest` | Candidaturas a aula vaga (`classId`, `professorId`, `status`) |
@@ -224,9 +224,9 @@ WHERE "id" = 10
 RETURNING *;
 ```
 
-### Inscrever-se em Aula (rota complementar)
+### Inscricao direta (rota REMOVIDA)
 
-`POST /classes/:id/enroll` — vincula direto, sem aprovacao (`enrolledById`):
+A rota `POST /classes/:id/enroll` foi removida (defeito D21): ela pulava candidatura e aprovacao. Hoje o `enrolledById` so e gravado na aprovacao da candidatura. O SQL abaixo fica so como referencia historica:
 
 ```sql
 UPDATE "Classes"

@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { and, count, eq, gte, inArray, lt, lte, SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DrizzleService } from '../../database/drizzle.service';
 import {
   classes,
   enrollmentRequest,
+  schools,
   subjects,
   users,
   usersProfilesSchools,
@@ -17,6 +19,7 @@ export interface EnrollmentRequestCreateData {
 
 export interface EnrollmentRequestUpdateData {
   status?: string;
+  rejectionReason?: string | null;
 }
 
 // Substitui o `where: Prisma.EnrollmentRequestWhereInput` genérico que o
@@ -28,6 +31,7 @@ export interface EnrollmentRequestFilters {
   classId?: number;
   professorId?: number;
   schoolId?: number;
+  schoolIds?: number[];
   createdAtGte?: Date;
   createdAtLte?: Date;
   createdAtLt?: Date;
@@ -88,10 +92,26 @@ export class EnrollmentRequestsRepository {
     if (filters.schoolId) {
       conditions.push(eq(classes.schoolId, filters.schoolId));
     }
+    if (filters.schoolIds) {
+      conditions.push(
+        filters.schoolIds.length > 0
+          ? inArray(classes.schoolId, filters.schoolIds)
+          : eq(classes.id, -1),
+      );
+    }
 
+    // Disciplina da AULA (a outra junção de Subjects é a do professor).
+    const classSubject = alias(subjects, 'classSubject');
     const rows = await this.drizzle.db
       .select({
         enrollmentRequest,
+        // Defeito D15: a tela mostrava "Aula #8". Agora vem o que identifica
+        // a aula para quem lê: data/hora, disciplina e escola.
+        classStartedAt: classes.statededAt,
+        classFinishedAt: classes.finishedAt,
+        classSchoolId: classes.schoolId,
+        classSchoolName: schools.name,
+        classSubjectName: classSubject.name,
         schoolSince: usersProfilesSchools.approvedAt,
         professorName: users.name,
         professorEmail: users.email,
@@ -109,6 +129,8 @@ export class EnrollmentRequestsRepository {
       )
       .leftJoin(users, eq(users.id, enrollmentRequest.professorId))
       .leftJoin(subjects, eq(subjects.id, users.subjectId))
+      .leftJoin(schools, eq(schools.id, classes.schoolId))
+      .leftJoin(classSubject, eq(classSubject.id, classes.subjectId))
       .where(conditions.length ? and(...conditions) : undefined);
 
     const professorIds = [
@@ -131,6 +153,14 @@ export class EnrollmentRequestsRepository {
 
     return rows.map((row) => ({
       ...row.enrollmentRequest,
+      class: {
+        id: row.enrollmentRequest.classId,
+        statededAt: row.classStartedAt ?? null,
+        finishedAt: row.classFinishedAt ?? null,
+        schoolId: row.classSchoolId ?? null,
+        schoolName: row.classSchoolName ?? null,
+        subjectName: row.classSubjectName ?? null,
+      },
       schoolSince: row.schoolSince,
       user: row.professorName
         ? {

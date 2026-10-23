@@ -174,13 +174,14 @@ Quando tento me candidatar
 Entao recebo erro 400 "Limite de substituicoes atingido para este semestre"
 ```
 
-**Cenario 6: Janela de prioridade da escola**
+**Cenario 6: Grupos de prioridade da escola**
 ```
-Dado que a escola configurou uma janela de prioridade (priorityWindowHours)
-E a janela ainda nao terminou
-E nao tenho vinculo com essa escola
+Dado que a escola tem grupos de prioridade
+E estou no grupo "Substitutos" (prioridade 1, espera de 60 minutos)
+E a vaga foi publicada ha menos de 60 minutos
 Quando tento me candidatar
-Entao recebo erro 403 "Esta vaga esta em janela de prioridade para professores da escola"
+Entao recebo erro 403 "Esta vaga abre para o seu grupo "Substitutos" (prioridade 1) em N minuto(s)"
+E se eu nao estiver em nenhum grupo, so recebo depois de todos os grupos
 ```
 
 **Cenario 7: Candidatura duplicada**
@@ -394,8 +395,8 @@ Entao recebo erro 403 "Apenas o professor inscrito pode cancelar inscricao"
 | US3 | Rejeitar Candidatura | PATCH /enrollment-requests/:id/reject |
 | US4 | Listar Candidaturas | GET /enrollment-requests |
 | US5 | Cancelar Candidatura | DELETE /enrollment-requests/:id |
-| US6 | Inscrever-se | POST /classes/:id/enroll |
-| US7 | Cancelar Inscricao | DELETE /classes/:id/enroll |
+| US6 | Inscrever-se | ~~POST /classes/:id/enroll~~ (removida — usar candidatura) |
+| US7 | Cancelar Inscricao | ~~DELETE /classes/:id/enroll~~ (removida — usar `DELETE /enrollment-requests/:id`) |
 
 ---
 

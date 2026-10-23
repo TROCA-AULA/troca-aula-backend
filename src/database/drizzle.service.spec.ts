@@ -329,4 +329,55 @@ describe('DrizzleService', () => {
       expect(mockReserved.release).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('runPrivileged (leitura fora do recorte do RLS — D4/D5)', () => {
+    const makePrivilegedDb = () => {
+      const tx = { execute: jest.fn(async () => []) };
+      const db = {
+        transaction: jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
+      };
+      return { tx, db };
+    };
+
+    it('abre um pool separado e pequeno (max 4) só na primeira chamada', async () => {
+      service.onModuleInit();
+      const { db } = makePrivilegedDb();
+      mockDrizzle.mockReturnValueOnce(db as never);
+
+      await service.runPrivileged(async () => 1);
+      await service.runPrivileged(async () => 2);
+
+      expect(postgresMock).toHaveBeenLastCalledWith(
+        'postgresql://user:pass@localhost:5432/db',
+        { max: 4 },
+      );
+      // 1 pool global (onModuleInit) + 1 pool privilegiado, reaproveitado.
+      expect(postgresMock).toHaveBeenCalledTimes(2);
+      expect(db.transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('liga app.is_master só dentro da transação e expõe a transação como db', async () => {
+      service.onModuleInit();
+      const { tx, db } = makePrivilegedDb();
+      mockDrizzle.mockReturnValueOnce(db as never);
+
+      const seen = await service.runPrivileged(async () => service.db);
+
+      expect(seen).toBe(tx);
+      expect(tx.execute).toHaveBeenCalledTimes(1);
+      const query = JSON.stringify(tx.execute.mock.calls[0]);
+      expect(query).toContain("set_config('app.is_master', 'true', true)");
+    });
+
+    it('fecha também o pool privilegiado no onModuleDestroy', async () => {
+      service.onModuleInit();
+      const { db } = makePrivilegedDb();
+      mockDrizzle.mockReturnValueOnce(db as never);
+      await service.runPrivileged(async () => null);
+
+      await service.onModuleDestroy();
+
+      expect(mockClient.end).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -10,14 +10,24 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-// Fase 5 (modelo de grupos): a escola cria grupos com nome e tempo de
-// espera; o professor classificado no grupo vê a vaga após o delay dele.
+// Fase 5 (modelo de grupos): a escola cria grupos de prioridade (0 recebe
+// primeiro) com tempo de espera; o professor do grupo vê a vaga quando o
+// tempo do grupo dele passa.
 export class CreateTeacherGroupDto {
   @ApiProperty({ example: 'Professores da casa' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(80)
   name: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Prioridade do grupo (0 = recebe primeiro). Se omitida, entra depois do último grupo.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
 
   @ApiProperty({
     description: 'Tempo de espera em minutos a partir da criação da vaga',
@@ -33,6 +43,12 @@ export class UpdateTeacherGroupDto {
   @IsString()
   @MaxLength(80)
   name?: string;
+
+  @ApiPropertyOptional({ description: 'Prioridade do grupo (0 = primeiro)' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -52,7 +68,7 @@ export class SetGroupMembersDto {
 export class UpdatePrioritySettingsDto {
   @ApiPropertyOptional({
     description:
-      'Delay padrão (minutos) para professores fora de qualquer grupo',
+      'Espera mínima (minutos) para professores sem grupo. Eles sempre recebem depois do grupo mais demorado; este valor só vale se for maior que isso.',
   })
   @IsOptional()
   @IsInt()

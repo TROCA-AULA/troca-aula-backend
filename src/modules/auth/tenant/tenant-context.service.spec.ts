@@ -1,19 +1,35 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TenantContextService } from './tenant-context.service';
 import { DrizzleService } from '../../../database/drizzle.service';
 
 describe('TenantContextService', () => {
   let service: TenantContextService;
-  let mockDb: { query: { users: { findFirst: jest.Mock } } };
+  let mockDb: {
+    query: {
+      users: { findFirst: jest.Mock };
+      schools: { findMany: jest.Mock };
+    };
+  };
 
   beforeEach(async () => {
-    mockDb = { query: { users: { findFirst: jest.fn() } } };
+    mockDb = {
+      query: {
+        users: { findFirst: jest.fn() },
+        schools: { findMany: jest.fn().mockResolvedValue([]) },
+      },
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantContextService,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -21,6 +37,92 @@ describe('TenantContextService', () => {
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  describe('coordenador municipal', () => {
+    it('ganha um vínculo de gestão em cada escola das redes que coordena', async () => {
+      const approvedAt = new Date('2026-10-01');
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 9,
+        upsUser: [],
+        networkLinks: [{ networkId: 2, approvedAt }],
+      });
+      mockDb.query.schools.findMany.mockResolvedValue([
+        { id: 4, networkId: 2 },
+        { id: 5, networkId: 2 },
+      ]);
+
+      const tenant = await service.resolve(9);
+
+      expect(tenant.coordinatedNetworkIds).toEqual([2]);
+      expect(tenant.isMaster).toBe(false);
+      expect(tenant.links).toEqual([
+        {
+          schoolId: 4,
+          profileId: 5,
+          profileName: 'COORDENADOR_MUNICIPAL',
+          approvedAt,
+          networkId: 2,
+        },
+        {
+          schoolId: 5,
+          profileId: 5,
+          profileName: 'COORDENADOR_MUNICIPAL',
+          approvedAt,
+          networkId: 2,
+        },
+      ]);
+      expect(
+        service.hasSchoolAccess(tenant, 5, [
+          'DIRETOR',
+          'COORDENADOR_MUNICIPAL',
+        ]),
+      ).toBe(true);
+      expect(service.hasSchoolAccess(tenant, 6)).toBe(false);
+    });
+
+    it('sem rede coordenada não consulta escolas', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({ id: 1, upsUser: [] });
+
+      const tenant = await service.resolve(1);
+
+      expect(tenant.coordinatedNetworkIds).toEqual([]);
+      expect(mockDb.query.schools.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('canManageNetwork / assertCanManageNetwork', () => {
+    const base = { userId: 1, links: [], subjectId: null };
+
+    it('MASTER gerencia qualquer rede', () => {
+      expect(service.canManageNetwork({ ...base, isMaster: true }, 99)).toBe(
+        true,
+      );
+    });
+
+    it('coordenador só gerencia as redes dele', () => {
+      const tenant = { ...base, isMaster: false, coordinatedNetworkIds: [2] };
+      expect(service.canManageNetwork(tenant, 2)).toBe(true);
+      expect(service.canManageNetwork(tenant, 3)).toBe(false);
+      expect(service.canManageNetwork({ ...base, isMaster: false }, 2)).toBe(
+        false,
+      );
+    });
+
+    it('assertCanManageNetwork lança 403 fora da rede e devolve o tenant dentro', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 9,
+        upsUser: [],
+        networkLinks: [{ networkId: 2, approvedAt: new Date() }],
+      });
+
+      await expect(service.assertCanManageNetwork(9, 3)).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(service.assertCanManageNetwork(9, 2)).resolves.toEqual(
+        expect.objectContaining({ coordinatedNetworkIds: [2] }),
+      );
+    });
+  });
 
   describe('resolve', () => {
     it('should throw NotFoundException when user does not exist', async () => {

@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  ForbiddenException,
   Query,
   Request,
   UseGuards,
@@ -25,6 +26,7 @@ import { FindUsersQueryDto } from './dto/find-users-query.dto';
 
 interface AuthenticatedRequest {
   user?: { id: number };
+  tenant?: { isMaster: boolean };
 }
 
 // Achado de segurança real (não era o objetivo original desta mudança):
@@ -69,9 +71,11 @@ export class UsersController {
   // qualquer outro userId) o perfil DIRETOR/MASTER em qualquer escola. O
   // vínculo nasce já aprovado (approvedById = quem está chamando), pois só
   // quem já tem poder de gestão naquela escola chega até aqui.
+  // Defeito D22: o service ainda confere que o perfil concedido fica
+  // ABAIXO do perfil de quem concede (antes um DIRETOR se dava MASTER).
   @Post(':id/assign-profile')
   @UseGuards(AuthGuard, TenantGuard, RolesGuard)
-  @Roles(ProfileName.MASTER, ProfileName.DIRETOR, ProfileName.AUXILIAR_ADMIN)
+  @Roles(...MANAGER_PROFILES)
   assignProfile(
     @Param('id') id: string,
     @Body() body: AssignProfileDto,
@@ -87,31 +91,56 @@ export class UsersController {
 
   // Contraparte do assign-profile: remove o vínculo usuário↔perfil↔escola.
   // Mesmas guardas — quem desvincula precisa ter poder de gestão NAQUELA
-  // escola (ou ser MASTER).
+  // escola (ou ser MASTER) e só remove perfis abaixo do seu.
   @Post(':id/unassign-profile')
   @UseGuards(AuthGuard, TenantGuard, RolesGuard)
-  @Roles(ProfileName.MASTER, ProfileName.DIRETOR, ProfileName.AUXILIAR_ADMIN)
-  unassignProfile(@Param('id') id: string, @Body() body: AssignProfileDto) {
+  @Roles(...MANAGER_PROFILES)
+  unassignProfile(
+    @Param('id') id: string,
+    @Body() body: AssignProfileDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.usersService.unassignProfile(
       +id,
       body.profileId,
       body.schoolId,
+      req.user!.id,
     );
   }
 
-  // Filtros opcionais schoolId/profileId (via UsersProfilesSchools). Sem
-  // eles, mantém o comportamento anterior (lista todos). Não há guarda de
-  // escola aqui de propósito: a rota já era pública para qualquer usuário
-  // autenticado antes desta mudança, e restringir por posse de escola
-  // quebraria o uso hoje feito pela área master ao listar globalmente —
-  // fica registrado como possível endurecimento futuro (ver docs).
+  // Listagem de usuários — só gestão (antes qualquer professor logado via
+  // nome, e-mail e telefone de todo mundo). MASTER lista tudo; os demais
+  // gestores precisam informar a escola (TenantGuard + RolesGuard conferem
+  // que ele gerencia aquela escola) ou buscar um e-mail exato (é assim que
+  // o diretor acha um professor recém-cadastrado para vincular).
   @Get()
-  @UseGuards(AuthGuard)
-  async findAll(@Query() query: FindUsersQueryDto) {
+  @UseGuards(AuthGuard, TenantGuard, RolesGuard)
+  @Roles(...MANAGER_PROFILES)
+  async findAll(
+    @Query() query: FindUsersQueryDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const isMaster = req.tenant?.isMaster ?? false;
+    if (!isMaster && query.schoolId === undefined && !query.email) {
+      throw new ForbiddenException(
+        'Informe a escola (schoolId) ou um e-mail para buscar',
+      );
+    }
     const users = await this.usersService.findAll({
       schoolId: query.schoolId,
       profileId: query.profileId,
+      email: query.email,
     });
+    if (!isMaster && query.schoolId === undefined) {
+      // Busca por e-mail fora da própria escola: só o básico, sem os
+      // vínculos com outras escolas.
+      return users.map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        subjectId: user.subjectId,
+      }));
+    }
     return users.map(sanitizeUser);
   }
 
@@ -122,10 +151,20 @@ export class UsersController {
     return user ? sanitizeUser(user) : user;
   }
 
+  // Defeito D1: quem pode alterar o quê é decidido no service (a própria
+  // pessoa, MASTER, ou a gestão de uma escola em que ela tem vínculo).
   @Patch(':id')
   @UseGuards(AuthGuard)
-  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    const updated = await this.usersService.update(+id, updateUserDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const updated = await this.usersService.updateAsRequester(
+      +id,
+      updateUserDto,
+      req.user!.id,
+    );
     return sanitizeUser(updated);
   }
 
@@ -139,8 +178,11 @@ export class UsersController {
     return this.usersService.resetPassword(+id, req.user!.id);
   }
 
+  // Defeito D1: apagar conta é só do MASTER (gestor da escola desvincula
+  // com unassign-profile, não apaga a pessoa do sistema).
   @Delete(':id')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ProfileName.MASTER)
   async remove(@Param('id') id: string) {
     const removed = await this.usersService.remove(+id);
     return sanitizeUser(removed);

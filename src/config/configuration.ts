@@ -7,6 +7,9 @@ export const config = () => ({
   },
   saltRounds: parseInt(process?.env?.SALT ?? '10', 10),
   secret: process?.env?.SECRET ?? 's0//P4$$w0rD',
+  // Validade do token de login (defeito D19: antes não expirava nunca).
+  // Formato do jsonwebtoken: '12h', '30m', '7d'...
+  jwtExpiresIn: process?.env?.JWT_EXPIRES_IN ?? '12h',
   // Notificações por e-mail (opcional): sem SMTP_HOST, o EmailService
   // vira no-op e nada quebra em dev/CI.
   smtp: {

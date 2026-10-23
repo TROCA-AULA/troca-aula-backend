@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateWorkloadPolicyDto } from './dto/create-workload-policy.dto';
 import { UpdateWorkloadPolicyDto } from './dto/update-workload-policy.dto';
 import { WorkloadPoliciesRepository } from './workload-policies.repository';
@@ -7,7 +11,16 @@ import { WorkloadPoliciesRepository } from './workload-policies.repository';
 export class WorkloadPoliciesService {
   constructor(private readonly repository: WorkloadPoliciesRepository) {}
 
-  create(dto: CreateWorkloadPolicyDto) {
+  async create(dto: CreateWorkloadPolicyDto) {
+    const existing = await this.repository.findByNetworkAndType(
+      dto.networkId,
+      dto.workloadTypeId,
+    );
+    if (existing) {
+      throw new ConflictException(
+        'Esta rede já tem uma política para este tipo de carga. Edite a existente.',
+      );
+    }
     return this.repository.create(dto);
   }
 

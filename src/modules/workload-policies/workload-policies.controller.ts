@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Query,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { WorkloadPoliciesService } from './workload-policies.service';
@@ -15,23 +16,37 @@ import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ProfileName } from '../auth/tenant/tenant-context';
+import { TenantContextService } from '../auth/tenant/tenant-context.service';
 
-// Escrita só MASTER (é a Secretaria Municipal configurando as regras da
-// rede). Leitura: qualquer usuário autenticado — restringir à(s) escola(s)
+// Escrita: MASTER ou COORDENADOR_MUNICIPAL da rede (é a Secretaria
+// Municipal configurando as regras da rede). Leitura: qualquer usuário autenticado — restringir à(s) escola(s)
 // da própria rede exigiria resolução de tenant por networkId, que o
 // TenantGuard hoje não faz (só resolve schoolId); decisão de escopo
 // documentada no Design Doc em vez de estender o guard reativamente aqui.
+interface AuthenticatedRequest {
+  user: { id: number };
+}
+
 @Controller('workload-policies')
 @UseGuards(AuthGuard)
 export class WorkloadPoliciesController {
   constructor(
     private readonly workloadPoliciesService: WorkloadPoliciesService,
+    private readonly tenantContextService: TenantContextService,
   ) {}
 
+  // MASTER em qualquer rede; COORDENADOR_MUNICIPAL só nas que coordena.
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(ProfileName.MASTER)
-  create(@Body() dto: CreateWorkloadPolicyDto) {
+  @Roles(ProfileName.MASTER, ProfileName.COORDENADOR_MUNICIPAL)
+  async create(
+    @Body() dto: CreateWorkloadPolicyDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    await this.tenantContextService.assertCanManageNetwork(
+      req.user.id,
+      dto.networkId,
+    );
     return this.workloadPoliciesService.create(dto);
   }
 
@@ -49,8 +64,17 @@ export class WorkloadPoliciesController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles(ProfileName.MASTER)
-  update(@Param('id') id: string, @Body() dto: UpdateWorkloadPolicyDto) {
+  @Roles(ProfileName.MASTER, ProfileName.COORDENADOR_MUNICIPAL)
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkloadPolicyDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const policy = await this.workloadPoliciesService.findOne(+id);
+    await this.tenantContextService.assertCanManageNetwork(
+      req.user.id,
+      policy.networkId,
+    );
     return this.workloadPoliciesService.update(+id, dto);
   }
 }

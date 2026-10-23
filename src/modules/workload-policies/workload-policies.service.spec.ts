@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { WorkloadPoliciesService } from './workload-policies.service';
 import { WorkloadPoliciesRepository } from './workload-policies.repository';
 
@@ -15,6 +15,7 @@ describe('WorkloadPoliciesService', () => {
           provide: WorkloadPoliciesRepository,
           useValue: {
             create: jest.fn(),
+            findByNetworkAndType: jest.fn().mockResolvedValue(null),
             findAll: jest.fn(),
             findOne: jest.fn(),
             update: jest.fn(),
@@ -37,6 +38,19 @@ describe('WorkloadPoliciesService', () => {
 
       expect(repository.create).toHaveBeenCalledWith(dto);
       expect(result).toEqual(created);
+    });
+
+    it('recusa com 409 quando a rede já tem política para o tipo', async () => {
+      repository.findByNetworkAndType.mockResolvedValue({ id: 9 } as any);
+
+      await expect(
+        service.create({
+          networkId: 1,
+          workloadTypeId: 4,
+          maxHoursPerWeek: 20,
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(repository.create).not.toHaveBeenCalled();
     });
   });
 

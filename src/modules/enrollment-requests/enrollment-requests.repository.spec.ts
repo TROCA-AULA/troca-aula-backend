@@ -34,7 +34,13 @@ describe('EnrollmentRequestsRepository', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EnrollmentRequestsRepository,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -85,6 +91,11 @@ describe('EnrollmentRequestsRepository', () => {
         professorEmail: 'ana@example.com',
         professorSubjectId: 5,
         professorSubjectName: 'Matemática',
+        classStartedAt: new Date('2026-01-10T13:00:00.000Z'),
+        classFinishedAt: new Date('2026-01-10T14:00:00.000Z'),
+        classSchoolId: 7,
+        classSchoolName: 'EMEF Alfa',
+        classSubjectName: 'Matemática',
       };
       mockDb.select
         .mockReturnValueOnce(createDrizzleChainMock([row]))
@@ -106,6 +117,14 @@ describe('EnrollmentRequestsRepository', () => {
       expect(result).toEqual([
         {
           ...baseRequest,
+          class: {
+            id: baseRequest.classId,
+            statededAt: row.classStartedAt,
+            finishedAt: row.classFinishedAt,
+            schoolId: 7,
+            schoolName: 'EMEF Alfa',
+            subjectName: 'Matemática',
+          },
           schoolSince: row.schoolSince,
           user: {
             id: 20,
@@ -138,6 +157,10 @@ describe('EnrollmentRequestsRepository', () => {
       expect(result).toEqual([
         {
           ...row.enrollmentRequest,
+          class: expect.objectContaining({
+            statededAt: null,
+            schoolName: null,
+          }),
           schoolSince: null,
           user: {
             id: 21,
@@ -192,7 +215,12 @@ describe('EnrollmentRequestsRepository', () => {
       const result = await repository.findAll({});
 
       expect(result).toEqual([
-        { ...row.enrollmentRequest, schoolSince: null, user: undefined },
+        {
+          ...row.enrollmentRequest,
+          class: expect.objectContaining({ id: baseRequest.classId }),
+          schoolSince: null,
+          user: undefined,
+        },
       ]);
     });
 

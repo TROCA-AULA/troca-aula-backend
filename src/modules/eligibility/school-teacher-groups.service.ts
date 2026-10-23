@@ -24,10 +24,13 @@ import {
   UpdateTeacherGroupDto,
 } from './dto/teacher-groups.dto';
 
-// Fase 5 no modelo de GRUPOS por escola (definido com o stakeholder):
-// a escola cria grupos (nome + delay), classifica professores e define o
-// delay de quem não está em nenhum grupo. O município (rede) define para
-// quais redes exibe suas vagas; a escola pode restringir MAIS.
+// Fase 5 no modelo de GRUPOS DE PRIORIDADE por escola (definido com o
+// stakeholder): a escola cria grupos (nome + prioridade + tempo de espera)
+// e classifica professores. Prioridade 0 recebe primeiro; um grupo de
+// prioridade maior nunca abre antes de um de prioridade menor. Quem não
+// está em grupo nenhum recebe por último (ver EligibilityService). O
+// município (rede) define para quais redes exibe suas vagas; a escola pode
+// restringir MAIS.
 @Injectable()
 export class SchoolTeacherGroupsService {
   constructor(
@@ -43,7 +46,6 @@ export class SchoolTeacherGroupsService {
       columns: {
         id: true,
         networkId: true,
-        priorityWindowHours: true,
         ungroupedDelayMinutes: true,
         acceptedNetworkIds: true,
       },
@@ -54,26 +56,47 @@ export class SchoolTeacherGroupsService {
 
     const groups = await this.drizzle.db.query.schoolTeacherGroups.findMany({
       where: eq(schoolTeacherGroups.schoolId, schoolId),
-      orderBy: [asc(schoolTeacherGroups.delayMinutes)],
+      orderBy: [
+        asc(schoolTeacherGroups.priority),
+        asc(schoolTeacherGroups.delayMinutes),
+      ],
       with: { members: { columns: { professorId: true } } },
     });
 
-    const interconnections =
-      await this.drizzle.db.query.networkInterconnections.findMany({
+    // Nomes das redes permitidas vêm de OUTROS municípios (fora do RLS de
+    // quem chama) — leitura privilegiada só de id e nome.
+    const interconnections = await this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.networkInterconnections.findMany({
         where: eq(networkInterconnections.originNetworkId, school.networkId),
-      });
+        with: { allowedNetwork: { columns: { id: true, name: true } } },
+      }),
+    );
+
+    const maxGroupDelay = Math.max(
+      0,
+      ...groups.map((group) => group.delayMinutes),
+    );
 
     return {
       schoolId,
       ungroupedDelayMinutes: school.ungroupedDelayMinutes,
-      // Fallback retrocompatível para escolas que usam o campo antigo.
-      fallbackPriorityWindowHours: school.priorityWindowHours ?? null,
+      // Quando quem está SEM grupo passa a ver a vaga (null = na hora,
+      // porque a escola não tem grupos).
+      ungroupedEffectiveDelayMinutes:
+        groups.length > 0
+          ? Math.max(maxGroupDelay, school.ungroupedDelayMinutes)
+          : null,
       // O que a REDE permite; a escola só pode restringir dentro disso.
       allowedNetworkIds: interconnections.map((row) => row.allowedNetworkId),
+      allowedNetworks: interconnections.map((row) => ({
+        id: row.allowedNetworkId,
+        name: row.allowedNetwork?.name ?? null,
+      })),
       acceptedNetworkIds: school.acceptedNetworkIds ?? null,
       groups: groups.map((group) => ({
         id: group.id,
         name: group.name,
+        priority: group.priority,
         delayMinutes: group.delayMinutes,
         professorIds: (group.members ?? []).map((member) => member.professorId),
       })),
@@ -87,9 +110,25 @@ export class SchoolTeacherGroupsService {
   ) {
     await this.assertManagerOfSchool(schoolId, requesterId);
 
+    const current = await this.listGroupsForOrdering(schoolId);
+    const priority =
+      dto.priority ??
+      (current.length > 0
+        ? Math.max(...current.map((group) => group.priority)) + 1
+        : 0);
+    this.assertConsistentOrder([
+      ...current,
+      { id: -1, name: dto.name, priority, delayMinutes: dto.delayMinutes },
+    ]);
+
     const [created] = await this.drizzle.db
       .insert(schoolTeacherGroups)
-      .values({ schoolId, name: dto.name, delayMinutes: dto.delayMinutes })
+      .values({
+        schoolId,
+        name: dto.name,
+        priority,
+        delayMinutes: dto.delayMinutes,
+      })
       .onConflictDoNothing()
       .returning();
 
@@ -111,10 +150,24 @@ export class SchoolTeacherGroupsService {
     await this.assertManagerOfSchool(schoolId, requesterId);
     await this.assertGroupOfSchool(schoolId, groupId);
 
+    const current = await this.listGroupsForOrdering(schoolId);
+    this.assertConsistentOrder(
+      current.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              priority: dto.priority ?? group.priority,
+              delayMinutes: dto.delayMinutes ?? group.delayMinutes,
+            }
+          : group,
+      ),
+    );
+
     const [updated] = await this.drizzle.db
       .update(schoolTeacherGroups)
       .set({
         ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.priority !== undefined && { priority: dto.priority }),
         ...(dto.delayMinutes !== undefined && {
           delayMinutes: dto.delayMinutes,
         }),
@@ -229,6 +282,33 @@ export class SchoolTeacherGroupsService {
     return this.get(schoolId, requesterId);
   }
 
+  private listGroupsForOrdering(schoolId: number) {
+    return this.drizzle.db.query.schoolTeacherGroups.findMany({
+      where: eq(schoolTeacherGroups.schoolId, schoolId),
+      columns: { id: true, name: true, priority: true, delayMinutes: true },
+    });
+  }
+
+  // Regra da prioridade: quem tem prioridade MENOR nunca pode receber
+  // DEPOIS de quem tem prioridade maior (senão o "0 recebe primeiro" vira
+  // mentira). Mesma prioridade pode ter tempos diferentes.
+  private assertConsistentOrder(
+    groups: Array<{ name: string; priority: number; delayMinutes: number }>,
+  ) {
+    for (const first of groups) {
+      for (const second of groups) {
+        if (
+          first.priority < second.priority &&
+          first.delayMinutes > second.delayMinutes
+        ) {
+          throw new BadRequestException(
+            `O grupo "${second.name}" (prioridade ${second.priority}) abriria em ${second.delayMinutes} min, antes do grupo "${first.name}" (prioridade ${first.priority}, ${first.delayMinutes} min). Quem tem prioridade maior precisa esperar o mesmo tempo ou mais.`,
+          );
+        }
+      }
+    }
+  }
+
   private async assertManagerOfSchool(schoolId: number, requesterId: number) {
     const tenant = await this.tenantContextService.resolve(requesterId);
     if (
@@ -255,16 +335,26 @@ export class SchoolTeacherGroupsService {
   }
 }
 
+// Interconexões de uma rede: MASTER em qualquer rede; COORDENADOR_MUNICIPAL
+// só nas redes que coordena. As redes de DESTINO são de outros municípios
+// (fora do RLS de quem chama), por isso a validação e os nomes são lidos
+// em modo privilegiado (só id e nome).
 @Injectable()
 export class NetworkInterconnectionsService {
-  constructor(private readonly drizzle: DrizzleService) {}
+  constructor(
+    private readonly drizzle: DrizzleService,
+    private readonly tenantContextService: TenantContextService,
+  ) {}
 
-  async get(networkId: number) {
+  async get(networkId: number, requesterId: number) {
+    await this.assertCanManageNetwork(networkId, requesterId);
     await this.assertNetworkExists(networkId);
-    const rows = await this.drizzle.db.query.networkInterconnections.findMany({
-      where: eq(networkInterconnections.originNetworkId, networkId),
-      with: { allowedNetwork: { columns: { id: true, name: true } } },
-    });
+    const rows = await this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.networkInterconnections.findMany({
+        where: eq(networkInterconnections.originNetworkId, networkId),
+        with: { allowedNetwork: { columns: { id: true, name: true } } },
+      }),
+    );
     return {
       networkId,
       interconnections: rows.map((row) => ({
@@ -274,7 +364,12 @@ export class NetworkInterconnectionsService {
     };
   }
 
-  async replace(networkId: number, dto: SetNetworkInterconnectionsDto) {
+  async replace(
+    networkId: number,
+    dto: SetNetworkInterconnectionsDto,
+    requesterId: number,
+  ) {
+    await this.assertCanManageNetwork(networkId, requesterId);
     await this.assertNetworkExists(networkId);
 
     const unique = [...new Set(dto.allowedNetworkIds)];
@@ -285,10 +380,12 @@ export class NetworkInterconnectionsService {
     }
 
     if (unique.length > 0) {
-      const existing = await this.drizzle.db.query.networks.findMany({
-        where: inArray(networks.id, unique),
-        columns: { id: true },
-      });
+      const existing = await this.drizzle.runPrivileged(() =>
+        this.drizzle.db.query.networks.findMany({
+          where: inArray(networks.id, unique),
+          columns: { id: true },
+        }),
+      );
       if (existing.length !== unique.length) {
         throw new NotFoundException('Uma ou mais redes informadas não existem');
       }
@@ -309,14 +406,25 @@ export class NetworkInterconnectionsService {
       }
     });
 
-    return this.get(networkId);
+    return this.get(networkId, requesterId);
+  }
+
+  private async assertCanManageNetwork(networkId: number, requesterId: number) {
+    const tenant = await this.tenantContextService.resolve(requesterId);
+    if (!this.tenantContextService.canManageNetwork(tenant, networkId)) {
+      throw new ForbiddenException(
+        'Você só pode configurar as redes que coordena',
+      );
+    }
   }
 
   private async assertNetworkExists(networkId: number) {
-    const network = await this.drizzle.db.query.networks.findFirst({
-      where: eq(networks.id, networkId),
-      columns: { id: true },
-    });
+    const network = await this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.networks.findFirst({
+        where: eq(networks.id, networkId),
+        columns: { id: true },
+      }),
+    );
     if (!network) {
       throw new NotFoundException('Rede não encontrada');
     }

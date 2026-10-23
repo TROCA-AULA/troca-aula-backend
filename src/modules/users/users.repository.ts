@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { DrizzleService } from '../../database/drizzle.service';
 import { users, usersProfilesSchools } from '../../database/schema';
 import { notDeleted } from '../../database/soft-delete';
@@ -9,6 +8,7 @@ import { notDeleted } from '../../database/soft-delete';
 export interface FindAllUsersFilter {
   schoolId?: number;
   profileId?: number;
+  email?: string;
 }
 
 @Injectable()
@@ -71,6 +71,12 @@ export class UsersRepository {
   }
 
   async findAll(filter: FindAllUsersFilter = {}) {
+    if (filter.email !== undefined) {
+      return this.drizzle.db.query.users.findMany({
+        where: and(eq(users.email, filter.email.trim()), notDeleted(users)),
+        with: { upsUser: { with: { profile: true } } },
+      });
+    }
     if (filter.schoolId === undefined && filter.profileId === undefined) {
       return this.drizzle.db.query.users.findMany({
         where: notDeleted(users),
@@ -111,24 +117,43 @@ export class UsersRepository {
     });
   }
 
+  // Leitura privilegiada (defeito D5): roda no login, antes de existir um
+  // usuário no request, e o RLS escondia a escola — o networkId de cada
+  // vínculo ia null para o token.
   findOneBy(email: string) {
-    return this.drizzle.db.query.users.findFirst({
-      where: and(eq(users.email, email), notDeleted(users)),
-      with: {
-        upsUser: {
-          // `networkId` da escola de cada vínculo entra no JWT (ver
-          // AuthService.signIn) para o frontend operar por rede sem uma
-          // segunda chamada — só a coluna, não a escola inteira.
-          with: { school: { columns: { networkId: true } } },
+    return this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.users.findFirst({
+        where: and(eq(users.email, email), notDeleted(users)),
+        with: {
+          upsUser: {
+            // `networkId` da escola de cada vínculo entra no JWT (ver
+            // AuthService.signIn) para o frontend operar por rede sem uma
+            // segunda chamada — só a coluna, não a escola inteira.
+            with: { school: { columns: { networkId: true } } },
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto) {
+  // Mesma leitura do login, pelo id: usada para renovar o token (D23).
+  findOneForToken(id: number) {
+    return this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.users.findFirst({
+        where: and(eq(users.id, id), notDeleted(users)),
+        with: {
+          upsUser: {
+            with: { school: { columns: { networkId: true } } },
+          },
+        },
+      }),
+    );
+  }
+
+  async update(id: number, data: Partial<typeof users.$inferInsert>) {
     const [user] = await this.drizzle.db
       .update(users)
-      .set({ ...updateUserDto })
+      .set({ ...data })
       .where(eq(users.id, id))
       .returning();
     return user;

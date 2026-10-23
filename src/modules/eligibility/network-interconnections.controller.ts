@@ -5,6 +5,7 @@ import {
   Param,
   ParseIntPipe,
   Put,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
@@ -14,24 +15,33 @@ import { ProfileName } from '../auth/tenant/tenant-context';
 import { NetworkInterconnectionsService } from './school-teacher-groups.service';
 import { SetNetworkInterconnectionsDto } from './dto/preferences.dto';
 
-// Interconexão direcional entre redes (Fase 5, Seção 9.3) — gerida só
-// pelo MASTER neste ciclo (premissa Q5 da Seção 9.5).
+interface AuthenticatedRequest {
+  user: { id: number };
+}
+
+// Interconexão direcional entre redes (Fase 5, Seção 9.3) — gerida pelo
+// MASTER (qualquer rede) e pelo COORDENADOR_MUNICIPAL (só as redes que
+// coordena; a checagem fina por rede fica no service).
 @Controller('networks')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(ProfileName.MASTER)
+@Roles(ProfileName.MASTER, ProfileName.COORDENADOR_MUNICIPAL)
 export class NetworkInterconnectionsController {
   constructor(private readonly service: NetworkInterconnectionsService) {}
 
   @Get(':id/interconnections')
-  get(@Param('id', ParseIntPipe) id: number) {
-    return this.service.get(id);
+  get(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.service.get(id, req.user.id);
   }
 
   @Put(':id/interconnections')
   replace(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetNetworkInterconnectionsDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.service.replace(id, dto);
+    return this.service.replace(id, dto, req.user.id);
   }
 }

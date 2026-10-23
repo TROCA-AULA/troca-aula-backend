@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, isNull, or } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, or } from 'drizzle-orm';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { DrizzleService } from '../../database/drizzle.service';
@@ -8,11 +8,35 @@ import { notDeleted } from '../../database/soft-delete';
 import { GetClassDto } from './dto/get-class.dto';
 import { GetCoverageStatsDto } from './dto/get-coverage-stats.dto';
 
+// Defeito D7: a criação não gravava dia da semana/horário, e o filtro
+// "Dia da semana" dos Indicadores nunca achava aula criada pela tela.
+// Derivados aqui das datas da aula, no fuso da rede (padrão: Brasília).
+// dayOfWeek segue o padrão do JavaScript: 0 = domingo ... 6 = sábado.
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function toLocalSlot(date: Date): { dayOfWeek: number; time: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: process.env.APP_TIMEZONE || 'America/Sao_Paulo',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return {
+    dayOfWeek: WEEKDAYS.indexOf(get('weekday')),
+    time: `${get('hour')}:${get('minute')}`,
+  };
+}
+
 @Injectable()
 export class ClassesRepository {
   constructor(private readonly drizzle: DrizzleService) {}
 
   async create(createClassDto: CreateClassDto) {
+    const start = toLocalSlot(new Date(createClassDto.statededAt));
+    const end = toLocalSlot(new Date(createClassDto.finishedAt));
     const [created] = await this.drizzle.db
       .insert(classes)
       .values({
@@ -21,6 +45,9 @@ export class ClassesRepository {
         createdByd: createClassDto.createdByd,
         statededAt: createClassDto.statededAt,
         finishedAt: createClassDto.finishedAt,
+        dayOfWeek: start.dayOfWeek,
+        startTime: start.time,
+        endTime: end.time,
       })
       .returning();
     return created;
@@ -30,8 +57,16 @@ export class ClassesRepository {
   // TODO findMany de Classes, mesmo quando nenhum outro filtro era passado —
   // por isso notDeleted(classes) entra incondicionalmente aqui, não só
   // dentro do `if`.
-  findAll(params: GetClassDto) {
+  findAll(params: GetClassDto & { schoolIds?: number[] }) {
     const conditions = [notDeleted(classes)];
+
+    if (params?.schoolIds) {
+      conditions.push(
+        params.schoolIds.length > 0
+          ? inArray(classes.schoolId, params.schoolIds)
+          : eq(classes.id, -1),
+      );
+    }
 
     if (params?.userId) {
       conditions.push(
@@ -84,10 +119,8 @@ export class ClassesRepository {
     });
   }
 
-  // Inclui `school` (priorityWindowHours) porque
-  // EnrollmentRequestsService.create() precisa validar a janela de
-  // prioridade da escola ao aceitar uma candidatura - os demais usos deste
-  // método (update/remove) ignoram o campo extra sem custo real.
+  // Inclui `school` por conveniência de quem chama (update/remove ignoram
+  // o campo extra sem custo real).
   findOne(id: number) {
     return this.drizzle.db.query.classes.findFirst({
       where: and(eq(classes.id, id), notDeleted(classes)),

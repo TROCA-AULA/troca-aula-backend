@@ -2,6 +2,8 @@
 
 Este documento lista as funcionalidades que ainda não foram implementadas no backend, identificadas durante a análise do código e comparação com a documentação.
 
+> **Fonte única de status (verificada em 2026-10-22 rodando o sistema):** [`docs/status-funcionalidades.md`](../../docs/status-funcionalidades.md) — lista o que funciona, os **defeitos encontrados (D1–D24, todos corrigidos)**, o que está pendente e o que está fora de escopo. Este arquivo guarda o histórico técnico das fases.
+>
 > **Ver também:** [`design-doc-evolucao-multi-tenant.md`](../../docs/design-doc-evolucao-multi-tenant.md) (raiz do projeto) — arquitetura completa da evolução multi-tenant, migração Prisma→Drizzle e conformidade municipal.
 >
 > **Atualização (Fases 0-5 + P15 + MonthlyClosingReports + e-mail):** segurança/autorização (Fase 0), migração Prisma→Drizzle (Fase 1), modelo de dados multi-tenant com conformidade de carga horária (Fase 2), frontend multi-tenant (Fase 3), indicador estatístico (Fase 4, backend + tela de indicadores no frontend), fluxo de senha (troca pelo próprio usuário e reset por gestor), `networkId` por vínculo no JWT, relatório mensal de fechamento de ponto — incluindo o fluxo de correção (`reopen`) — e a **Fase 5 (motor de elegibilidade geográfica, ver seção própria abaixo)** estão implementados e commitados na branch `v2` (backend **594 testes, 61 suítes + 7 E2E, 0 falhas**, cobertura de 98,7% de linhas / 92,9% de branches — mínimo de 90% exigido no CI). Notificações por e-mail (nodemailer) implementadas de forma opcional: sem `SMTP_HOST`, o serviço vira no-op (não quebra dev/CI). RLS **ativado** na rodada de segurança (sessão por request; ver seção própria abaixo e ADR-006 revisado). Segue pendente: perfil `COORDENADOR_MUNICIPAL`/vínculo usuário↔rede (fora do recorte da Fase 5 nesta rodada), push notifications (app mobile) e ML/NLP/dashboard analítico (WON'T).
@@ -22,8 +24,8 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 
 | Item | Status | Observação |
 |------|--------|------------|
-| P1 - Controle de Limite de Substituições | ✅ Implementado | Campo `substitutionLimitPerSemester` em Schools |
-| P2 - Integração Gov.br | ✅ Stub implementado | Endpoint retorna "recurso em desenvolvimento" |
+| P1 - Controle de Limite de Substituições | ✅ Implementado (com ressalva) | O gate usa `Users.substitutionLimitPerSemester` (limite **por professor**, contando aprovações do semestre). A coluna homônima em `Schools` existe mas **não é usada**. Não há tela nem rota para definir o limite (defeito D6) — só via banco |
+| P2 - Integração Gov.br | ⏸️ Só stub (não autentica) | `GET /auth/govbr-auth-url` responde 501 e `POST /auth/login-govbr` responde 401, ambos "em desenvolvimento". O front tem o botão e a rota de sessão prontos, mas o login Gov.br **não funciona** |
 
 ### Segurança/Autorização — Fase 0 do Design Doc (multi-tenant)
 
@@ -35,7 +37,7 @@ Este documento lista as funcionalidades que ainda não foram implementadas no ba
 | P6 - Duas lógicas de autorização divergentes | ✅ Corrigido | `classes.service.ts` e `enrollment-requests.service.ts` agora usam a mesma fonte de verdade: `TenantContextService` (`src/modules/auth/tenant/tenant-context.service.ts`) |
 | P7 - `enum ProfileEnum` desatualizado | ✅ Corrigido | `MASTER = 4` adicionado, confirmado contra a migration `20260818220000_normalize_profile_names` |
 
-**Como validar:** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas** — as 7 falhas pré-existentes de `profile.controller.spec.ts`/`create-user.dto.spec.ts` foram corrigidas). Novos testes dedicados em `src/modules/auth/tenant/tenant-context.service.spec.ts`, `src/modules/auth/guards/{tenant,roles}.guard.spec.ts`, nos specs de `users` (assign/unassign-profile, filtros de `findAll`) e nos specs de `classes` (`getCoverageStats`/`getCoverageCounts`).
+**Como validar (números daquela rodada — hoje são 594 testes em 61 suítes + 7 E2E):** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas** — as 7 falhas pré-existentes de `profile.controller.spec.ts`/`create-user.dto.spec.ts` foram corrigidas). Novos testes dedicados em `src/modules/auth/tenant/tenant-context.service.spec.ts`, `src/modules/auth/guards/{tenant,roles}.guard.spec.ts`, nos specs de `users` (assign/unassign-profile, filtros de `findAll`) e nos specs de `classes` (`getCoverageStats`/`getCoverageCounts`).
 
 ### Ciência de Dados — Fase 4 do Design Doc (COULD, prioridade baixa)
 
@@ -101,55 +103,7 @@ O backend já conta com as seguintes funcionalidades:
 
 ## Recomendações
 
-### Para P1 — Controle de Limite
-
-Sugestão de implementação:
-
-```typescript
-// Adicionar campo na entidade Schools (no schema.prisma)
-model Schools {
-  // ...campos existentes
-  substitutionLimitPerSemester Int @default(10)
-}
-
-// Adicionar lógica no enrollment-requests.service.ts
-async create(classId: number, professorId: number) {
-  // ... validações existentes
-  
-  // NOVO: Verificar limite de substituições
-  const professorSubstitutions = await this.countApprovedSubstitutions(professorId);
-  const school = await this.getSchoolOfClass(classId);
-  
-  if (professorSubstitutions >= school.substitutionLimitPerSemester) {
-    throw new BadRequestException('Limite de substituições atingido');
-  }
-  
-  // ... restante da lógica
-}
-```
-
-### Para P2 — Integração Gov.br
-
-Sugestão de implementação:
-
-```typescript
-// Novo serviço: govbr-auth.service.ts
-@Injectable()
-export class GovBrAuthService {
-  async validateToken(govBrToken: string): Promise<GovBrUser> {
-    // Chamar API Gov.br para validar token
-    // Retornar dados do usuário
-  }
-}
-
-// Novo auth.controller.ts
-@Post('login-govbr')
-async loginGovBr(@Body() body: { token: string }) {
-  const user = await this.govBrAuthService.validateToken(body.token);
-  // Criar/validar usuário no sistema local
-  // Retornar JWT interno
-}
-```
+As sugestões de implementação que ficavam aqui (código Prisma para P1 e P2) eram de antes da migração para Drizzle e foram removidas por estarem obsoletas: P1 está implementado; P2 continua como stub (ver tabela acima e `docs/status-funcionalidades.md`, Seção 3).
 
 ---
 
@@ -161,7 +115,7 @@ async loginGovBr(@Body() body: { token: string }) {
 | Endpoints CRUD | ✅ Completo |
 | Sistema de candidaturas | ✅ Completo |
 | Controle de limite de substituições | ✅ Implementado |
-| Integração Gov.br | ✅ Stub implementado |
+| Integração Gov.br | ⏸️ Só stub — não autentica |
 | Documentação API | ✅ Sincronizada (README + `docs/01`/`02`/`03`/`04`) — ver nota abaixo |
 | Guarda de tenant/perfil centralizada | ✅ Implementada (Fase 0) — ver P3-P7 acima |
 | Migração Prisma → Drizzle | ✅ Implementada (Fase 1) — ver nota técnica abaixo |
@@ -174,14 +128,17 @@ async loginGovBr(@Body() body: { token: string }) {
 | Fluxo de senha (troca pelo próprio usuário + reset por gestor) | ✅ Implementado — `PATCH /auth/change-password`, `POST /users/:id/reset-password` |
 | Fluxo de correção do fechamento mensal (`reopen`) | ✅ Implementado — `PATCH /monthly-closing-reports/:id/reopen`, justificativa obrigatória e auditada |
 
-### Pendências Remanescentes (reais)
+### Pendências Remanescentes (reais) — atualizado em 2026-10-23
 
 | Item | Status | Observação |
 |------|--------|------------|
-| RLS (Row-Level Security) | ✅ Ativado | Sessão por request (`runWithRlsScope` + interceptor) e políticas `FORCE ROW LEVEL SECURITY` nas 5 tabelas com `networkId` (migration 0007); app conecta como papel NOSUPERUSER |
-| Fase 5 — motor de elegibilidade geográfica | ⏸️ Bloqueada | Depende de definições de negócio ainda em aberto (ver Design Doc, Seção 9) |
-| Envio por e-mail/convite | 📋 Pendente | A senha temporária do reset é devolvida uma única vez na resposta para o gestor repassar; não há envio automático nem fluxo de convite |
-| Testes E2E reais | 📋 Pendente | `test/app.e2e-spec.ts` ainda é o boilerplate do Nest; a cobertura real hoje é unitária (33 suítes) |
+| RLS (Row-Level Security) | ✅ Ativado | Sessão por request (`runWithRlsScope` + interceptor) e políticas `FORCE ROW LEVEL SECURITY` nas 5 tabelas com `networkId` (migration 0007); app conecta como papel NOSUPERUSER. Leituras de diretório (escolas/redes) que precisam atravessar redes usam `DrizzleService.runPrivileged` — corrigiu a elegibilidade de professores de outra rede (D4) e a tela de preferências (D5) |
+| Fase 5 — motor de elegibilidade geográfica | ✅ Implementada | Grupos **com prioridade** (0 recebe primeiro); sem grupo = último; escola sem grupos = todos na hora. Substitui o ranking por antiguidade e o `priorityWindowHours` (rota removida; a coluna ficou no banco sem uso) |
+| E-mail | ✅ Implementado (opcional, via `SMTP_*`) | Aprovação/rejeição (com o motivo), nova vaga e **senha temporária** (`reset-password` envia e responde `emailSent`; o front usa o mesmo caminho ao criar contas). Sem SMTP, a senha volta na resposta para o gestor repassar |
+| Testes E2E | ✅ | `test/app.e2e-spec.ts` (7 E2E de *wiring*, sem banco) + roteiro `test/api/testar-api.sh` (222 verificações com Postgres real e RLS), que roda no CI no job `api-real-db` |
+| Defeitos D1–D24 | ✅ Todos corrigidos | Ver `docs/status-funcionalidades.md`, Seção 2 |
+| Cidade de residência do professor | ✅ Implementada | `Users.residenceNetworkId` (migration 0009). Só vale para quem não tem vínculo aprovado com escola (contrato prevalece) |
+| Perfil `COORDENADOR_MUNICIPAL` / vínculo usuário↔rede | ✅ Implementado | Tabela `UserNetworkLinks`, rotas `/network-coordinators` (MASTER). O coordenador gere escolas, políticas, interconexões e auditoria da sua rede e opera cada escola como diretor |
 | ML preditivo / NLP / dashboard analítico completo | ❌ WON'T | Visão de futuro do Design Doc, fora do roadmap comprometido deste ciclo |
 
 ### Fase 1 — Migração Prisma → Drizzle (implementada)
@@ -220,15 +177,16 @@ async loginGovBr(@Body() body: { token: string }) {
 - **Validado de ponta a ponta contra o banco real:** professor com AULA=20h (vigente desde jan/2026) + SUPLEMENTAR=6h (vigente desde fev/2026) + SUBSTITUICAO=3h (só em fev/2026) → relatório de março/2026 gerado com `{AULA: 20, SUPLEMENTAR: 6, total: 26}` (SUBSTITUICAO corretamente excluído por não vigorar em março) → `close` sem `review` prévio rejeitado (400) → `review` → `close` → regenerar depois de `CLOSED` rejeitado (400). Dados de teste removidos após a validação.
 - **Ficou de fora (documentado, não é regressão):** envio do relatório fechado por e-mail/convite (fora do escopo desta rodada).
 
-**Como validar:** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas**). Novos testes em `src/modules/monthly-closing-reports/monthly-closing-reports.service.spec.ts`.
+**Como validar (números daquela rodada — hoje são 594 testes em 61 suítes + 7 E2E):** `npx tsc --noEmit` e `pnpm test` (**263/263 testes, 33 suítes, 0 falhas**). Novos testes em `src/modules/monthly-closing-reports/monthly-closing-reports.service.spec.ts`.
 
 ---
 
 ## Próximos Passos
 
-1. Execute o que está em `docs/prompt.front.md` para identificar pendências do frontend
-2. Atualize este arquivo com as pendências encontradas
+1. Corrigir os defeitos críticos/altos D1–D4 (`docs/status-funcionalidades.md`, Seção 2).
+2. Levar o roteiro `docs/guias-de-teste/api/testar-api.sh` para o CI (job com Postgres de serviço) — quando D1–D4 forem corrigidos, ele deve terminar com 0 falhas.
+3. Abrir PR `v2 → main` (o CI só roda na `main`).
 
 ---
 
-*Documento atualizado em: 2026-05-16 (seções de Fase 0/1/2 adicionadas em 2026-09-26; status sincronizado com o código em 2026-09-27)*
+*Documento atualizado em: 2026-10-22 (status revalidado contra o sistema rodando; ver `docs/status-funcionalidades.md`)*

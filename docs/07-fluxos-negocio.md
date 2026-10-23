@@ -224,7 +224,7 @@ sequenceDiagram
 2. Nao existe candidatura `PENDING` do mesmo professor para a mesma aula
 3. Professor existe
 4. `Users.subjectId` = `Classes.subjectId` (mesma materia)
-5. Se `Schools.priorityWindowHours` esta configurado e a janela ainda nao fechou, so professores com vinculo com a escola podem se candidatar
+5. Elegibilidade: a regra de prioridade da escola (grupos com prioridade e espera; sem grupo = ultimo; escola sem grupos = todos na hora), a regra do municipio (rede propria ou interconectada) e as exclusoes do professor
 6. Sem conflito de horario com outra aula/substituicao do professor
 7. Limite de substituicoes do semestre nao atingido (`Users.substitutionLimitPerSemester`, contando apenas `APPROVED` do semestre atual)
 8. Cria o registro `PENDING`

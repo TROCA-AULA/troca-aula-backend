@@ -9,9 +9,11 @@ import {
   UseGuards,
   Request,
   ParseIntPipe,
+  Body,
 } from '@nestjs/common';
 import { EnrollmentRequestsService } from './enrollment-requests.service';
 import { FilterEnrollmentRequestDto } from './dto/filter-enrollment-request.dto';
+import { RejectEnrollmentRequestDto } from './dto/reject-enrollment-request.dto';
 import { AuthGuard } from '../auth/auth.guard';
 
 interface AuthenticatedRequest {
@@ -72,8 +74,13 @@ export class EnrollmentRequestsController {
   reject(
     @Param('id', ParseIntPipe) id: number,
     @Request() req: AuthenticatedRequest,
+    @Body() dto?: RejectEnrollmentRequestDto,
   ) {
-    return this.enrollmentRequestsService.reject(id, req.user.id);
+    return this.enrollmentRequestsService.reject(
+      id,
+      req.user.id,
+      dto?.rejectionReason,
+    );
   }
 
   @Delete(':id')

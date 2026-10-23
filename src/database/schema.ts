@@ -50,6 +50,13 @@ export const users = pgTable(
     password: text('password').notNull(),
     subjectId: integer('subjectId'),
     substitutionLimitPerSemester: integer('substitutionLimitPerSemester'),
+    // Município (rede) onde o professor mora. Só conta para a regra do
+    // município quando ele NÃO tem contrato (vínculo aprovado) em nenhuma
+    // escola — "contrato prevalece sobre residência" (Design Doc, 9.3).
+    residenceNetworkId: integer('residenceNetworkId').references(
+      () => networks.id,
+      { onDelete: 'set null', onUpdate: 'cascade' },
+    ),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
     deletedAt: timestamp('deletedAt', { precision: 3 }),
   },
@@ -89,16 +96,12 @@ export const schools = pgTable('Schools', {
     }),
   name: text('name').notNull(),
   substitutionLimitPerSemester: integer('substitutionLimitPerSemester'),
-  // Regra de prioridade da própria escola (não da rede - diferente de
-  // WorkloadPolicies, que é config por rede): quantas horas após a criação
-  // de uma aula vaga ela fica visível só para professores vinculados a esta
-  // escola, antes de abrir para professores externos. NULL = sem janela,
-  // aberta imediatamente para todos (default retrocompatível). Configurado
-  // pela própria direção da escola, não só pelo MASTER - ver
-  // SchoolsController.updatePriorityWindow.
+  // OBSOLETO: janela única de prioridade do MVP. Substituída pelos grupos
+  // de prioridade (SchoolTeacherGroups); a coluna fica só por histórico e
+  // não é lida por nenhuma regra.
   priorityWindowHours: integer('priorityWindowHours'),
-  // Fase 5 (modelo de grupos): delay padrão para professores que não
-  // estão em nenhum grupo da escola (0 = imediato); e o subconjunto de
+  // Fase 5 (modelo de grupos): espera mínima de quem não está em nenhum
+  // grupo (que de todo modo recebe depois do grupo mais demorado); e o subconjunto de
   // redes interconectadas pela própria rede que esta escola aceita
   // (NULL = aceita todas as que a rede permite — "mais restritivo vence").
   ungroupedDelayMinutes: integer('ungroupedDelayMinutes').notNull().default(0),
@@ -206,6 +209,9 @@ export const enrollmentRequest = pgTable(
     // Prisma: String @default("PENDING") — nunca foi um enum nativo do
     // Postgres, então vira `text` livre aqui também (sem mudança de schema).
     status: text('status').notNull().default('PENDING'),
+    // Motivo informado pela gestão ao rejeitar (defeito D20: antes era
+    // descartado). Opcional.
+    rejectionReason: text('rejectionReason'),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
     // Prisma populava isso via @updatedAt (client-side, não trigger de banco).
     // Drizzle não tem equivalente automático — repositories/services que
@@ -419,6 +425,10 @@ export const schoolTeacherGroups = pgTable(
         onUpdate: 'cascade',
       }),
     name: text('name').notNull(),
+    // Ordem de prioridade do grupo na escola: 0 recebe primeiro, depois 1,
+    // 2... Um grupo de prioridade maior nunca pode abrir ANTES de um de
+    // prioridade menor (validado em SchoolTeacherGroupsService).
+    priority: integer('priority').notNull().default(0),
     delayMinutes: integer('delayMinutes').notNull().default(0),
     createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
   },
@@ -526,6 +536,35 @@ export const professorSchoolExclusions = pgTable(
   (table) => [primaryKey({ columns: [table.professorId, table.schoolId] })],
 );
 
+// Coordenador municipal: vínculo pessoa <-> rede (Design Doc, Seção 9.3).
+// Diferente de UsersProfilesSchools (que é por escola): o coordenador
+// gerencia TODAS as escolas das redes em que tem vínculo. Só o MASTER cria
+// ou remove esse vínculo (ele nasce aprovado, com approvedById = MASTER).
+export const userNetworkLinks = pgTable(
+  'UserNetworkLinks',
+  {
+    userId: integer('userId')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    networkId: integer('networkId')
+      .notNull()
+      .references(() => networks.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    approvedAt: timestamp('approvedAt', { precision: 3 }),
+    approvedById: integer('approvedById').references(() => users.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    createdAt: timestamp('createdAt', { precision: 3 }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.networkId] })],
+);
+
 // --- Relations (habilitam a Relational Query API: db.query.users.findFirst({ with: {...} })) ---
 
 export const profilesRelations = relations(profiles, ({ many }) => ({
@@ -535,6 +574,7 @@ export const profilesRelations = relations(profiles, ({ many }) => ({
 
 export const usersRelations = relations(users, ({ many }) => ({
   upsUser: many(usersProfilesSchools, { relationName: 'upsUser' }),
+  networkLinks: many(userNetworkLinks, { relationName: 'networkLinkUser' }),
   approvedLinks: many(usersProfilesSchools, { relationName: 'approver' }),
   classesCreated: many(classes, { relationName: 'classCreator' }),
   classesRegistered: many(classes, { relationName: 'classRegistrar' }),
@@ -824,3 +864,18 @@ export const schema = {
   professorNetworkInterestsRelations,
   professorSchoolExclusionsRelations,
 };
+
+export const userNetworkLinksRelations = relations(
+  userNetworkLinks,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [userNetworkLinks.userId],
+      references: [users.id],
+      relationName: 'networkLinkUser',
+    }),
+    network: one(networks, {
+      fields: [userNetworkLinks.networkId],
+      references: [networks.id],
+    }),
+  }),
+);

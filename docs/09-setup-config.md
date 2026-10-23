@@ -105,9 +105,11 @@ MIGRATION_DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?sch
 # Se omitido, cai no fallback inseguro hardcoded do código — sempre defina em qualquer ambiente.
 SECRET="sua_chave_secreta_aqui_mude_em_producao"
 SALT=10
+# Validade do login (12h, 30m, 7d...). Padrão: 12h. O front renova com POST /auth/refresh.
+# JWT_EXPIRES_IN=12h
 
 # Servidor
-PORT=3000
+PORT=5000
 NODE_ENV=development
 
 # Notificações por e-mail (opcional) — sem SMTP_HOST o EmailService vira no-op
@@ -139,7 +141,7 @@ pnpm run start:prod
 pnpm run start:debug
 ```
 
-O servidor estará disponível em: `http://localhost:3000`
+O servidor estará disponível em: `http://localhost:5000` (valor de `PORT` no `.env`; sem `PORT`, o padrão do código é 3000).
 
 ---
 
@@ -274,7 +276,7 @@ flowchart TB
 docker build -t troca-aula-backend:latest .
 
 # Executar container
-docker run -p 3000:3000 --env-file .env troca-aula-backend:latest
+docker run -p 5000:5000 --env-file .env troca-aula-backend:latest
 ```
 
 ### Docker Compose
@@ -287,7 +289,7 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "5000:5000"
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/troca_aula
     depends_on:
@@ -317,7 +319,7 @@ volumes:
 DATABASE_URL="postgresql://user:pass@host:5432/troca_aula_prod"
 SECRET="chave_muito_segura_aleatoria"
 NODE_ENV=production
-PORT=3000
+PORT=5000
 ```
 
 ### Health Check
@@ -393,7 +395,7 @@ troca-aula-backend/
 docker logs -f container_id
 
 # Verificar processos usando a porta
-lsof -i :3000
+lsof -i :5000
 
 # Limpar node_modules e reinstalar
 rm -rf node_modules && pnpm install

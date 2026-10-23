@@ -11,6 +11,7 @@ describe('AuthController', () => {
   const mockAuthService = {
     signIn: jest.fn(),
     changePassword: jest.fn(),
+    refresh: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -66,6 +67,17 @@ describe('AuthController', () => {
         'new-pass-123',
       );
       expect(result).toEqual({ message: 'Senha alterada com sucesso' });
+    });
+  });
+
+  describe('refresh', () => {
+    it('renova o token de quem está logado', async () => {
+      mockAuthService.refresh.mockResolvedValue({ access_token: 't' });
+
+      await expect(controller.refresh({ user: { id: 9 } })).resolves.toEqual({
+        access_token: 't',
+      });
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(9);
     });
   });
 

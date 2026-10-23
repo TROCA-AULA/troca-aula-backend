@@ -42,6 +42,15 @@ export class AuthController {
     );
   }
 
+  // D23: troca o token atual por um com os dados de hoje (disciplina,
+  // vínculos, escolas da rede do coordenador). Também estende a validade.
+  @HttpCode(HttpStatus.OK)
+  @Post('refresh')
+  @UseGuards(AuthGuard)
+  refresh(@Request() req: AuthenticatedRequest) {
+    return this.authService.refresh(req.user.id);
+  }
+
   @Get('govbr-auth-url')
   @HttpCode(HttpStatus.NOT_IMPLEMENTED)
   govbrAuthUrl() {

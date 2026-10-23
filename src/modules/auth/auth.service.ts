@@ -4,6 +4,8 @@ import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { TenantContextService } from './tenant/tenant-context.service';
+import { ProfileName } from './tenant/tenant-context';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +13,7 @@ export class AuthService {
     private usersService: UsersService,
     private readonly config: ConfigService,
     private jwtService: JwtService,
+    private readonly tenantContextService: TenantContextService,
   ) {}
 
   // Esquema legado (P3, problemas-conhecidos.md do frontend): o cliente
@@ -45,12 +48,28 @@ export class AuthService {
         isMatch = true;
         const saltRounds = this.config.get<number>('saltRounds') as number;
         const newHash = await bcrypt.hash(pass, saltRounds);
-        await this.usersService.update(user.id, { password: newHash });
+        await this.usersService.updatePassword(user.id, newHash);
       }
     }
 
     if (!isMatch) throw new UnauthorizedException();
 
+    return this.issueToken(user);
+  }
+
+  // Defeito D23: disciplina, limite e vínculos vão dentro do token. Sem
+  // renovar, mudanças feitas pela direção só apareciam no próximo login.
+  // O front chama esta rota ao abrir o app (e depois de salvar dados do
+  // próprio usuário) para trocar o token por um com os dados atuais.
+  async refresh(userId: number) {
+    const user = await this.usersService.findOneForToken(userId);
+    if (!user) throw new UnauthorizedException();
+    return this.issueToken(user);
+  }
+
+  private async issueToken(
+    user: NonNullable<Awaited<ReturnType<UsersService['findOneBy']>>>,
+  ) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...userData } = user;
 
@@ -59,14 +78,32 @@ export class AuthService {
     // frontend poder consumir o recorte de rede (SchoolContext
     // .activeNetworkId) sem uma segunda chamada. A relação `school` crua é
     // removida do payload para não inflar o token.
-    const upsUser = (userData.upsUser ?? []).map(({ school, ...link }) => ({
+    const upsUser: Array<Record<string, unknown>> = (
+      userData.upsUser ?? []
+    ).map(({ school, ...link }) => ({
       ...link,
       networkId: school?.networkId ?? null,
     }));
+
+    // Coordenador municipal: entra no token um vínculo por escola das redes
+    // que ele coordena (o front escolhe a escola ativa a partir daqui).
+    const tenant = await this.tenantContextService.resolve(user.id);
+    for (const link of tenant.links) {
+      if (link.profileName !== ProfileName.COORDENADOR_MUNICIPAL) continue;
+      upsUser.push({
+        schoolId: link.schoolId,
+        userId: user.id,
+        profileId: link.profileId,
+        approvedAt: link.approvedAt,
+        networkId: link.networkId,
+      });
+    }
     const payload = { sub: { ...userData, upsUser } };
     return {
       access_token: await this.jwtService.signAsync(payload, {
         secret: this.config.get('secret'),
+        // D19: o token passa a expirar (padrão 12h, ver JWT_EXPIRES_IN).
+        expiresIn: this.config.get('jwtExpiresIn') ?? '12h',
       }),
     };
   }
@@ -96,9 +133,10 @@ export class AuthService {
     }
 
     const saltRounds = this.config.get<number>('saltRounds') as number;
-    await this.usersService.update(userId, {
-      password: await bcrypt.hash(newPassword, saltRounds),
-    });
+    await this.usersService.updatePassword(
+      userId,
+      await bcrypt.hash(newPassword, saltRounds),
+    );
 
     return { message: 'Senha alterada com sucesso' };
   }

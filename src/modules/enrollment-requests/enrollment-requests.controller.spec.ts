@@ -75,7 +75,10 @@ describe('EnrollmentRequestsController', () => {
 
     const result = await controller.reject(3, { user: { id: 2 } });
 
-    expect(mockService.reject).toHaveBeenCalledWith(3, 2);
+    expect(mockService.reject).toHaveBeenCalledWith(3, 2, undefined);
+
+    await controller.reject(3, { user: { id: 2 } }, { rejectionReason: 'X' });
+    expect(mockService.reject).toHaveBeenLastCalledWith(3, 2, 'X');
     expect(result).toEqual({ id: 3, status: 'REJECTED' });
   });
 

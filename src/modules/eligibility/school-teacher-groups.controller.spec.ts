@@ -141,9 +141,9 @@ describe('NetworkInterconnectionsController (Fase 5 — interconexões)', () => 
   it('get repassa o id da rede', async () => {
     mockService.get.mockResolvedValue({ networkId: 1, interconnections: [] });
 
-    const result = await controller.get(1);
+    const result = await controller.get(1, { user: { id: 4 } });
 
-    expect(mockService.get).toHaveBeenCalledWith(1);
+    expect(mockService.get).toHaveBeenCalledWith(1, 4);
     expect(result).toEqual({ networkId: 1, interconnections: [] });
   });
 
@@ -154,8 +154,8 @@ describe('NetworkInterconnectionsController (Fase 5 — interconexões)', () => 
       interconnections: [],
     });
 
-    await controller.replace(1, dto);
+    await controller.replace(1, dto, { user: { id: 4 } });
 
-    expect(mockService.replace).toHaveBeenCalledWith(1, dto);
+    expect(mockService.replace).toHaveBeenCalledWith(1, dto, 4);
   });
 });

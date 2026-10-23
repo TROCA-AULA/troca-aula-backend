@@ -48,7 +48,13 @@ describe('TeacherWorkloadRecordsRepository', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TeacherWorkloadRecordsRepository,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 

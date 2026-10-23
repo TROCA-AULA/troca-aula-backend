@@ -23,7 +23,13 @@ describe('ProfileRepository', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfileRepository,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 

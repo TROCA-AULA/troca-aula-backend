@@ -72,7 +72,13 @@ describe('EnrollmentRequestsService', () => {
         { provide: EnrollmentRequestsRepository, useValue: mockRepository },
         { provide: UsersRepository, useValue: mockUserRepository },
         { provide: ClassesRepository, useValue: mockClassesRepository },
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
         // TenantContextService real: usa o mesmo mockDb acima (query.users.findFirst).
         TenantContextService,
         { provide: EligibilityService, useValue: mockEligibility },
@@ -375,22 +381,23 @@ describe('EnrollmentRequestsService', () => {
       expect(mockRepository.create).toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException when the class overlaps another class of the professor', async () => {
+    const tomorrow = (hour: number) => {
+      const date = new Date(Date.now() + 86_400_000);
+      date.setUTCHours(hour, 0, 0, 0);
+      return date;
+    };
+
+    it('recusa quando o professor já tem OUTRA aula no mesmo horário real', async () => {
       mockClassesRepository.findOne.mockResolvedValue({
         id: 1,
         available: true,
         subjectId: 1,
-        dayOfWeek: 1,
-        startTime: '08:00',
-        endTime: '09:00',
+        statededAt: tomorrow(8),
+        finishedAt: tomorrow(9),
       });
       mockUserRepository.findOne.mockResolvedValue({ id: 2, subjectId: 1 });
       mockRepository.findAll.mockResolvedValue([]);
-      mockDb.select.mockReturnValue(
-        createDrizzleChainMock([
-          { id: 99, startTime: '08:30', endTime: '09:30' },
-        ]),
-      );
+      mockDb.select.mockReturnValue(createDrizzleChainMock([{ id: 99 }]));
 
       await expect(service.create(1, 2)).rejects.toThrow(
         'Conflito de horário detectado',
@@ -398,28 +405,36 @@ describe('EnrollmentRequestsService', () => {
       expect(mockRepository.create).not.toHaveBeenCalled();
     });
 
-    it('should allow the candidatura when existing classes do not overlap', async () => {
+    it('aceita quando nenhuma aula do professor se sobrepõe', async () => {
       mockClassesRepository.findOne.mockResolvedValue({
         id: 1,
         available: true,
         subjectId: 1,
-        dayOfWeek: 1,
-        startTime: '08:00',
-        endTime: '09:00',
+        statededAt: tomorrow(8),
+        finishedAt: tomorrow(9),
       });
       mockUserRepository.findOne.mockResolvedValue({ id: 2, subjectId: 1 });
       mockRepository.findAll.mockResolvedValue([]);
-      mockDb.select.mockReturnValue(
-        createDrizzleChainMock([
-          { id: 99, startTime: '10:00', endTime: '11:00' },
-          { id: 100, startTime: null, endTime: null },
-        ]),
-      );
+      mockDb.select.mockReturnValue(createDrizzleChainMock([]));
       mockRepository.create.mockResolvedValue({ id: 1, status: 'PENDING' });
 
       const result = await service.create(1, 2);
 
       expect(result.status).toBe('PENDING');
+    });
+
+    it('recusa candidatura a aula que já aconteceu (D11)', async () => {
+      mockClassesRepository.findOne.mockResolvedValue({
+        id: 1,
+        available: true,
+        subjectId: 1,
+        statededAt: new Date(Date.now() - 3_600_000),
+      });
+
+      await expect(service.create(1, 2)).rejects.toThrow(
+        'Esta aula já aconteceu',
+      );
+      expect(mockRepository.create).not.toHaveBeenCalled();
     });
 
     it('should use January as semester start when the current month is before July', async () => {
@@ -617,18 +632,36 @@ describe('EnrollmentRequestsService', () => {
       });
     });
 
-    it('should scope a manager without MASTER to the school of the first link', async () => {
+    it('gestor que pede escola que NÃO gerencia fica restrito às escolas dele', async () => {
       mockDb.query.users.findFirst.mockResolvedValue({
         id: 1,
-        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 7 }],
+        upsUser: [
+          { profile: { name: 'DIRETOR' }, schoolId: 7 },
+          { profile: { name: 'AUXILIAR_ADMIN' }, schoolId: 8 },
+        ],
       });
       mockRepository.findAll.mockResolvedValue([]);
 
       await service.findAll({ schoolId: 99 }, 1);
 
-      expect(mockRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ schoolId: 7 }),
-      );
+      const filters = mockRepository.findAll.mock.calls[0][0];
+      expect(filters.schoolIds).toEqual([7, 8]);
+      expect(filters.schoolId).toBeUndefined();
+    });
+
+    it('gestor de várias escolas pode filtrar por uma delas', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 1,
+        upsUser: [
+          { profile: { name: 'DIRETOR' }, schoolId: 7 },
+          { profile: { name: 'DIRETOR' }, schoolId: 8 },
+        ],
+      });
+      mockRepository.findAll.mockResolvedValue([]);
+
+      await service.findAll({ schoolId: 8 }, 1);
+
+      expect(mockRepository.findAll).toHaveBeenCalledWith({ schoolId: 8 });
     });
 
     it('should not scope a MASTER requester to a school', async () => {
@@ -681,6 +714,47 @@ describe('EnrollmentRequestsService', () => {
       expect(mockDb.transaction).toHaveBeenCalled();
       expect(mockTx.update).toHaveBeenCalledTimes(2);
       expect(result.status).toBe('APPROVED');
+    });
+
+    // Defeito D3: aprovar uma 2ª candidatura para a mesma aula "roubava" a
+    // aula da 1ª. Agora o UPDATE só pega aula ainda livre; se não pegar
+    // nada, a transação toda é desfeita.
+    it('recusa aprovar quando a aula já foi preenchida por outra candidatura', async () => {
+      const request = { id: 2, classId: 1, professorId: 5, status: 'PENDING' };
+      mockRepository.findOne.mockResolvedValue(request);
+      mockDb.select.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, schoolId: 1 }]),
+      );
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      });
+      mockTx.update.mockReturnValueOnce(createDrizzleChainMock([]));
+
+      await expect(service.approve(2, 3)).rejects.toThrow(
+        'Esta aula já foi preenchida por outra candidatura aprovada',
+      );
+      expect(mockTx.update).toHaveBeenCalledTimes(1);
+      expect(mockEmail.send).not.toHaveBeenCalled();
+    });
+
+    it('recusa quando a candidatura deixou de estar pendente no meio do caminho', async () => {
+      const request = { id: 2, classId: 1, professorId: 5, status: 'PENDING' };
+      mockRepository.findOne.mockResolvedValue(request);
+      mockDb.select.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, schoolId: 1 }]),
+      );
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      });
+      mockTx.update
+        .mockReturnValueOnce(createDrizzleChainMock([{ id: 1 }]))
+        .mockReturnValueOnce(createDrizzleChainMock([]));
+
+      await expect(service.approve(2, 3)).rejects.toThrow(
+        'Solicitação não está pendente',
+      );
     });
 
     it('should throw BadRequestException when not pending', async () => {
@@ -788,6 +862,34 @@ describe('EnrollmentRequestsService', () => {
       const result = await service.reject(1, 3);
 
       expect(result.status).toBe('REJECTED');
+      expect(mockRepository.update).toHaveBeenCalledWith(1, {
+        status: 'REJECTED',
+        rejectionReason: null,
+      });
+    });
+
+    it('grava o motivo da rejeição (D20), sem espaços nas pontas', async () => {
+      mockRepository.findOne.mockResolvedValue({
+        id: 1,
+        classId: 1,
+        professorId: 2,
+        status: 'PENDING',
+      });
+      mockDb.select.mockReturnValue(
+        createDrizzleChainMock([{ id: 1, schoolId: 1 }]),
+      );
+      mockDb.query.users.findFirst.mockResolvedValue({
+        id: 3,
+        upsUser: [{ profile: { name: 'DIRETOR' }, schoolId: 1 }],
+      });
+      mockRepository.update.mockResolvedValue({ id: 1, status: 'REJECTED' });
+
+      await service.reject(1, 3, '  Já temos substituto  ');
+
+      expect(mockRepository.update).toHaveBeenCalledWith(1, {
+        status: 'REJECTED',
+        rejectionReason: 'Já temos substituto',
+      });
     });
 
     it('should throw BadRequestException when rejecting a request that is not pending', async () => {

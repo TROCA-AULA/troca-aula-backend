@@ -12,7 +12,13 @@ describe('WorkloadPoliciesRepository', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkloadPoliciesRepository,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
     repository = module.get<WorkloadPoliciesRepository>(

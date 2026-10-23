@@ -241,7 +241,7 @@ DATABASE_URL=postgresql://user:password@host:port/database
 secret=sua_chave_secreta_aqui
 
 # App
-PORT=3000
+PORT=5000
 ```
 
 ---

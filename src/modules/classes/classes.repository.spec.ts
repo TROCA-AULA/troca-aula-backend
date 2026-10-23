@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ClassesRepository } from './classes.repository';
+import { ClassesRepository, toLocalSlot } from './classes.repository';
 import { DrizzleService } from '../../database/drizzle.service';
 import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 
@@ -23,7 +23,13 @@ describe('ClassesRepository', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ClassesRepository,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -50,7 +56,71 @@ describe('ClassesRepository', () => {
     });
   });
 
+  describe('toLocalSlot (D7: dia e horário derivados das datas)', () => {
+    it('converte para o fuso de Brasília (padrão): 13h UTC de uma sexta = 10h', () => {
+      expect(toLocalSlot(new Date('2026-10-23T13:00:00.000Z'))).toEqual({
+        dayOfWeek: 5,
+        time: '10:00',
+      });
+    });
+
+    it('vira o dia quando o horário UTC já passou da meia-noite', () => {
+      // 02h UTC de sábado = 23h de sexta em Brasília
+      expect(toLocalSlot(new Date('2026-10-24T02:30:00.000Z'))).toEqual({
+        dayOfWeek: 5,
+        time: '23:30',
+      });
+    });
+
+    it('respeita APP_TIMEZONE quando definido', () => {
+      process.env.APP_TIMEZONE = 'UTC';
+      try {
+        expect(toLocalSlot(new Date('2026-10-25T00:15:00.000Z'))).toEqual({
+          dayOfWeek: 0,
+          time: '00:15',
+        });
+      } finally {
+        delete process.env.APP_TIMEZONE;
+      }
+    });
+  });
+
+  describe('create — grava dia da semana e horário', () => {
+    it('preenche dayOfWeek/startTime/endTime a partir das datas', async () => {
+      const chain = createDrizzleChainMock([{ id: 1 }]);
+      mockDb.insert.mockReturnValue(chain);
+
+      await repository.create({
+        schoolId: 1,
+        subjectId: 2,
+        createdByd: 3,
+        statededAt: new Date('2026-10-23T13:00:00.000Z'),
+        finishedAt: new Date('2026-10-23T14:30:00.000Z'),
+      });
+
+      expect(chain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dayOfWeek: 5,
+          startTime: '10:00',
+          endTime: '11:30',
+        }),
+      );
+    });
+  });
+
   describe('findAll', () => {
+    it('filtra por várias escolas (gestor de mais de uma escola)', async () => {
+      mockDb.query.classes.findMany.mockResolvedValue([]);
+      await repository.findAll({ schoolIds: [1, 2] });
+      expect(mockDb.query.classes.findMany).toHaveBeenCalled();
+    });
+
+    it('lista vazia de escolas não devolve nada (sem cair em "todas")', async () => {
+      mockDb.query.classes.findMany.mockResolvedValue([]);
+      await repository.findAll({ schoolIds: [] });
+      expect(mockDb.query.classes.findMany).toHaveBeenCalled();
+    });
+
     it('should find all classes with filters', async () => {
       mockDb.query.classes.findMany.mockResolvedValue([]);
       const result = await repository.findAll({

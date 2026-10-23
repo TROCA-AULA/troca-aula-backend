@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -15,7 +16,7 @@ describe('UsersController', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
-    update: jest.fn(),
+    updateAsRequester: jest.fn(),
     remove: jest.fn(),
     assignProfile: jest.fn(),
     unassignProfile: jest.fn(),
@@ -56,6 +57,8 @@ describe('UsersController', () => {
     config = module.get<ConfigService>(ConfigService);
   });
 
+  afterEach(() => jest.clearAllMocks());
+
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
@@ -94,35 +97,75 @@ describe('UsersController', () => {
   });
 
   describe('findAll', () => {
-    it('should call service.findAll without filter', async () => {
+    const masterReq = { user: { id: 1 }, tenant: { isMaster: true } };
+    const directorReq = { user: { id: 2 }, tenant: { isMaster: false } };
+
+    it('MASTER lista todo mundo, sem filtro', async () => {
       mockUsersService.findAll.mockResolvedValue([]);
-      const result = await controller.findAll({});
+      const result = await controller.findAll({}, masterReq);
       expect(service.findAll).toHaveBeenCalledWith({
         schoolId: undefined,
         profileId: undefined,
+        email: undefined,
       });
       expect(result).toEqual([]);
     });
 
-    it('should forward schoolId/profileId query filters', async () => {
+    it('repassa os filtros schoolId/profileId', async () => {
       mockUsersService.findAll.mockResolvedValue([]);
-      await controller.findAll({ schoolId: 1, profileId: 3 });
+      await controller.findAll({ schoolId: 1, profileId: 3 }, directorReq);
       expect(service.findAll).toHaveBeenCalledWith({
         schoolId: 1,
         profileId: 3,
+        email: undefined,
       });
     });
 
-    // Achado de segurança real: qualquer usuário autenticado (só exige
-    // AuthGuard, nenhum perfil específico) podia ver o hash bcrypt de
-    // TODOS os usuários do sistema via esta rota.
+    it('gestor que não é MASTER precisa informar a escola ou um e-mail', async () => {
+      await expect(controller.findAll({}, directorReq)).rejects.toThrow(
+        'Informe a escola',
+      );
+      expect(service.findAll).not.toHaveBeenCalled();
+    });
+
+    it('busca por e-mail fora da escola devolve só o básico', async () => {
+      mockUsersService.findAll.mockResolvedValue([
+        {
+          id: 7,
+          name: 'Nina',
+          email: 'n@x',
+          subjectId: null,
+          phone: '1',
+          password: 'h',
+          upsUser: [{ schoolId: 9 }],
+        },
+      ]);
+      const result = await controller.findAll({ email: 'n@x' }, directorReq);
+      expect(result).toEqual([
+        { id: 7, name: 'Nina', email: 'n@x', subjectId: null },
+      ]);
+    });
+
+    it('a rota exige perfil de gestão', () => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, UsersController.prototype.findAll),
+      ).toEqual([
+        'MASTER',
+        'COORDENADOR_MUNICIPAL',
+        'DIRETOR',
+        'AUXILIAR_ADMIN',
+      ]);
+    });
+
+    // Achado de segurança real: o hash bcrypt de todos os usuários saía
+    // por esta rota.
     it('should strip the password hash from every user in the list', async () => {
       mockUsersService.findAll.mockResolvedValue([
         { id: 1, email: 'a@test.com', password: '$2b$10$hash1' },
         { id: 2, email: 'b@test.com', password: '$2b$10$hash2' },
       ]);
 
-      const result = await controller.findAll({});
+      const result = await controller.findAll({}, masterReq);
 
       expect(result).toEqual([
         { id: 1, email: 'a@test.com' },
@@ -132,6 +175,20 @@ describe('UsersController', () => {
   });
 
   describe('assignProfile', () => {
+    it.each(['assignProfile', 'unassignProfile'] as const)(
+      '%s aceita todos os perfis de gestão (a hierarquia é checada no service)',
+      (method) => {
+        expect(
+          Reflect.getMetadata(ROLES_KEY, UsersController.prototype[method]),
+        ).toEqual([
+          'MASTER',
+          'COORDENADOR_MUNICIPAL',
+          'DIRETOR',
+          'AUXILIAR_ADMIN',
+        ]);
+      },
+    );
+
     it('should call service.assignProfile with the caller id as approvedById', async () => {
       mockUsersService.assignProfile.mockResolvedValue({ userId: 5 });
       const req = { user: { id: 9 } };
@@ -148,11 +205,12 @@ describe('UsersController', () => {
   describe('unassignProfile', () => {
     it('should call service.unassignProfile', async () => {
       mockUsersService.unassignProfile.mockResolvedValue({ userId: 5 });
-      const result = await controller.unassignProfile('5', {
-        profileId: 1,
-        schoolId: 2,
-      });
-      expect(service.unassignProfile).toHaveBeenCalledWith(5, 1, 2);
+      const result = await controller.unassignProfile(
+        '5',
+        { profileId: 1, schoolId: 2 },
+        { user: { id: 9 } },
+      );
+      expect(service.unassignProfile).toHaveBeenCalledWith(5, 1, 2, 9);
       expect(result).toEqual({ userId: 5 });
     });
   });
@@ -184,23 +242,29 @@ describe('UsersController', () => {
   describe('update', () => {
     it('should call service.update', async () => {
       const dto = { name: 'Updated' } as any;
-      mockUsersService.update.mockResolvedValue({ id: 1 });
-      const result = await controller.update('1', dto);
-      expect(service.update).toHaveBeenCalledWith(1, dto);
+      mockUsersService.updateAsRequester.mockResolvedValue({ id: 1 });
+      const result = await controller.update('1', dto, { user: { id: 4 } });
+      expect(service.updateAsRequester).toHaveBeenCalledWith(1, dto, 4);
       expect(result).toEqual({ id: 1 });
     });
 
     it('should strip the password hash', async () => {
-      mockUsersService.update.mockResolvedValue({
+      mockUsersService.updateAsRequester.mockResolvedValue({
         id: 1,
         password: '$2b$10$hash',
       });
-      const result = await controller.update('1', {});
+      const result = await controller.update('1', {}, { user: { id: 1 } });
       expect(result).toEqual({ id: 1 });
     });
   });
 
   describe('remove', () => {
+    it('apagar conta é só do MASTER (D1)', () => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, UsersController.prototype.remove),
+      ).toEqual(['MASTER']);
+    });
+
     it('should call service.remove', async () => {
       mockUsersService.remove.mockResolvedValue({ id: 1 });
       const result = await controller.remove('1');

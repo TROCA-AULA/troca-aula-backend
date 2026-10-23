@@ -1,13 +1,8 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { SchoolsRepository } from './schools.repository';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
-import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
 
 @Injectable()
 export class SchoolsService {
@@ -15,7 +10,11 @@ export class SchoolsService {
     private readonly schoolsRepository: SchoolsRepository,
     private readonly tenantContextService: TenantContextService,
   ) {}
-  create(createSchoolDto: CreateSchoolDto) {
+  async create(createSchoolDto: CreateSchoolDto, requesterId: number) {
+    await this.tenantContextService.assertCanManageNetwork(
+      requesterId,
+      createSchoolDto.networkId,
+    );
     return this.schoolsRepository.create(createSchoolDto);
   }
 
@@ -27,36 +26,32 @@ export class SchoolsService {
     return this.schoolsRepository.findOne(id);
   }
 
-  update(id: number, updateSchoolDto: UpdateSchoolDto) {
-    return this.schoolsRepository.update(id, updateSchoolDto);
-  }
-
-  remove(id: number) {
-    return this.schoolsRepository.remove(id);
-  }
-
-  // Guarda de posse feita AQUI (não no TenantGuard): o schoolId desta rota
-  // vem do parâmetro :id, e o TenantGuard hoje só resolve schoolId a partir
-  // de body/query (mesmo padrão já usado em ClassesService.update/remove).
-  async updatePriorityWindow(
+  async update(
     id: number,
-    priorityWindowHours: number | null,
+    updateSchoolDto: UpdateSchoolDto,
     requesterId: number,
   ) {
     const school = await this.schoolsRepository.findOne(id);
     if (!school) {
       throw new NotFoundException('Escola não encontrada');
     }
-
-    const tenant = await this.tenantContextService.resolve(requesterId);
+    await this.tenantContextService.assertCanManageNetwork(
+      requesterId,
+      school.networkId,
+    );
     if (
-      !this.tenantContextService.hasSchoolAccess(tenant, id, MANAGER_PROFILES)
+      updateSchoolDto.networkId !== undefined &&
+      updateSchoolDto.networkId !== school.networkId
     ) {
-      throw new ForbiddenException(
-        'Você só pode configurar a regra de prioridade da própria escola',
+      await this.tenantContextService.assertCanManageNetwork(
+        requesterId,
+        updateSchoolDto.networkId,
       );
     }
+    return this.schoolsRepository.update(id, updateSchoolDto);
+  }
 
-    return this.schoolsRepository.updatePriorityWindow(id, priorityWindowHours);
+  remove(id: number) {
+    return this.schoolsRepository.remove(id);
   }
 }

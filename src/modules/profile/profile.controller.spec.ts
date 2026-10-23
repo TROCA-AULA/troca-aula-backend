@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 
 describe('ProfileController', () => {
   let controller: ProfileController;
@@ -30,11 +32,34 @@ describe('ProfileController', () => {
       // então o guard é substituído por um no-op.
       .overrideGuard(AuthGuard)
       .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     controller = module.get<ProfileController>(ProfileController);
     service = module.get<ProfileService>(ProfileService);
   });
+
+  // Defeito D2: escrita em perfis era liberada para qualquer pessoa logada.
+  it.each(['create', 'update', 'remove'] as const)(
+    '%s exige o perfil MASTER',
+    (method) => {
+      const roles = Reflect.getMetadata(
+        ROLES_KEY,
+        ProfileController.prototype[method],
+      );
+      expect(roles).toEqual(['MASTER']);
+    },
+  );
+
+  it.each(['findAll', 'findOne'] as const)(
+    '%s continua aberto a qualquer pessoa logada',
+    (method) => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, ProfileController.prototype[method]),
+      ).toBeUndefined();
+    },
+  );
 
   it('should be defined', () => {
     expect(controller).toBeDefined();

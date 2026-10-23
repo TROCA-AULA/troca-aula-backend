@@ -51,12 +51,15 @@ export class EmailService {
     return this.transporter !== null;
   }
 
-  async send(message: EmailMessage): Promise<void> {
+  // Devolve true só quando o e-mail saiu de fato (false = SMTP desligado
+  // ou falha). Quem precisa avisar o usuário (ex.: senha temporária) usa o
+  // retorno para dizer se a pessoa vai receber ou se é preciso repassar.
+  async send(message: EmailMessage): Promise<boolean> {
     if (!this.transporter) {
       this.logger.debug(
         `[no-op] E-mail para ${message.to}: ${message.subject}`,
       );
-      return;
+      return false;
     }
 
     try {
@@ -66,11 +69,13 @@ export class EmailService {
         subject: message.subject,
         text: message.text,
       });
+      return true;
     } catch (error) {
       // Nunca propaga: falha de e-mail não pode desfazer a operação.
       this.logger.error(
         `Falha ao enviar e-mail para ${message.to}: ${String(error)}`,
       );
+      return false;
     }
   }
 

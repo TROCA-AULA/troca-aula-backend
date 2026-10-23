@@ -2,16 +2,15 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { ClassesRepository } from './classes.repository';
 import { GetClassDto } from './dto/get-class.dto';
 import { GetCoverageStatsDto } from './dto/get-coverage-stats.dto';
 import { DrizzleService } from '../../database/drizzle.service';
-import { classes, users, usersProfilesSchools } from '../../database/schema';
+import { schools, users, usersProfilesSchools } from '../../database/schema';
 import { notDeleted } from '../../database/soft-delete';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
 import { MANAGER_PROFILES } from '../auth/tenant/tenant-context';
@@ -74,7 +73,7 @@ export class ClassesService {
   }
 
   async findAll(params: GetClassDto) {
-    let currentParams = params;
+    let currentParams: GetClassDto & { schoolIds?: number[] } = params;
     let professorFilter: {
       professorId: number;
       subjectId: number | null;
@@ -82,39 +81,39 @@ export class ClassesService {
 
     if (params.userId) {
       const tenant = await this.tenantContextService.resolve(params.userId);
-      // Gestor não-MASTER (DIRETOR/AUXILIAR_ADMIN) tem QUALQUER vínculo de
-      // perfil de gestão - não só olhar tenant.links[0]. Achado real de bug
-      // ao validar contra Postgres: um professor recém-criado, ainda SEM
-      // NENHUM vínculo aprovado, tinha links=[] -> primaryLink undefined ->
-      // a condição antiga não caía nem no ramo "gestor" nem no ramo
-      // "professor", e a listagem voltava sem filtro nenhum (professor
-      // externo via vaga dentro da janela de prioridade, que é exatamente o
-      // que a janela deveria impedir).
-      const isNonMasterManager = tenant.links.some((l) =>
-        (MANAGER_PROFILES as string[]).includes(l.profileName),
-      );
+      // Gestor não-MASTER (DIRETOR/AUXILIAR_ADMIN/COORDENADOR) tem QUALQUER
+      // vínculo de perfil de gestão. Achado real de bug ao validar contra
+      // Postgres: um professor recém-criado, ainda SEM NENHUM vínculo
+      // aprovado, tinha links=[] e a listagem voltava sem filtro nenhum.
+      const managedSchoolIds = [
+        ...new Set(
+          tenant.links
+            .filter((l) =>
+              (MANAGER_PROFILES as string[]).includes(l.profileName),
+            )
+            .map((l) => l.schoolId),
+        ),
+      ];
 
       if (tenant.isMaster) {
         // MASTER enxerga tudo, em qualquer rede/escola (acesso global,
-        // Design Doc) - NÃO escopar ao primeiro vínculo dele, mesmo que ele
-        // também tenha um vínculo formal em alguma escola (ex.: a escola do
-        // bootstrap). Achado real ao validar o guia de simulação: tratar
-        // MASTER igual a um gestor comum aqui fazia o próprio dashboard do
-        // MASTER (contagem de aulas disponíveis) sumir com aulas de
-        // qualquer escola que não fosse a do vínculo dele. currentParams já
-        // é `params` (schoolId explícito do chamador, se houver).
-      } else if (isNonMasterManager) {
-        const primaryLink = tenant.links[0];
+        // Design Doc) — currentParams já é `params` (schoolId explícito do
+        // chamador, se houver).
+      } else if (managedSchoolIds.length > 0) {
+        // Gestor: a escola pedida (se ele gerencia) ou todas as que ele
+        // gerencia — antes usava só o "primeiro vínculo", o que quebrava
+        // quem gerencia mais de uma escola (ex.: coordenador municipal).
         currentParams = {
-          schoolId: primaryLink?.schoolId,
           available: params.available,
+          schoolIds:
+            params.schoolId && managedSchoolIds.includes(params.schoolId)
+              ? [params.schoolId]
+              : managedSchoolIds,
         };
       } else {
         // Não-gestor (professor com vínculo, ou usuário sem nenhum vínculo
-        // ainda): mantém os params originais (não escopa a uma única
-        // escola - pode ver vagas de qualquer escola em que tenha vínculo,
-        // ou de fora, sujeito à elegibilidade abaixo), mas guarda o
-        // contexto para filtrar o resultado.
+        // ainda): pode ver vagas de qualquer escola, sujeito à
+        // elegibilidade abaixo.
         professorFilter = {
           professorId: params.userId,
           subjectId: tenant.subjectId,
@@ -127,21 +126,21 @@ export class ClassesService {
       return results;
     }
 
-    // Achado real (relatado pelo usuário): a listagem não filtrava por
-    // disciplina - o professor via aulas de qualquer matéria e só descobria
-    // que não podia se candidatar ao tentar (EnrollmentRequestsService.create
-    // já validava subjectId, mas só ali). Filtrando aqui também, a listagem
-    // fica coerente com o que o professor realmente pode fazer.
+    // Professor só vê aulas da própria matéria (a candidatura já exigia
+    // isso) e que ainda não aconteceram (defeito D11). Sem disciplina
+    // cadastrada não há o que mostrar.
+    const now = Date.now();
     const subjectFiltered = results.filter(
       (classItem) =>
-        professorFilter.subjectId === null ||
-        classItem.subjectId === professorFilter.subjectId,
+        professorFilter.subjectId !== null &&
+        classItem.subjectId === professorFilter.subjectId &&
+        (!classItem.statededAt ||
+          new Date(classItem.statededAt).getTime() >= now ||
+          classItem.enrolledById === professorFilter.professorId),
     );
 
     // Fase 5 (Design Doc, Seção 9): visibilidade decidida pelo mesmo motor
-    // usado na candidatura (tiers por escola + interconexão de redes +
-    // interesse do professor + exclusão da escola), em lote para não fazer
-    // N queries por aula.
+    // usado na candidatura, em lote para não fazer N queries por aula.
     const verdicts = await this.eligibilityService.evaluateMany(
       professorFilter.professorId,
       subjectFiltered.map((classItem) => ({
@@ -149,8 +148,34 @@ export class ClassesService {
         createdAt: classItem.createdAt,
       })),
     );
+    const visible = subjectFiltered.filter(
+      (_, index) => verdicts[index].visible,
+    );
 
-    return subjectFiltered.filter((_, index) => verdicts[index].visible);
+    return this.fillSchoolNames(visible);
+  }
+
+  // Vaga de escola de OUTRO município (liberada pela interconexão): o RLS
+  // esconde a escola e a coluna "Escola" aparecia em branco (D4). Completa
+  // só id, nome e rede, em leitura privilegiada.
+  private async fillSchoolNames<
+    T extends { schoolId: number; school?: unknown },
+  >(items: T[]): Promise<T[]> {
+    const missing = [
+      ...new Set(items.filter((i) => !i.school).map((i) => i.schoolId)),
+    ];
+    if (missing.length === 0) return items;
+
+    const rows = await this.drizzle.runPrivileged(() =>
+      this.drizzle.db.query.schools.findMany({
+        where: inArray(schools.id, missing),
+        columns: { id: true, name: true, networkId: true },
+      }),
+    );
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return items.map((item) =>
+      item.school ? item : { ...item, school: byId.get(item.schoolId) ?? null },
+    );
   }
 
   findOne(id: number) {
@@ -203,71 +228,6 @@ export class ClassesService {
     }
 
     return this.repository.remove(id);
-  }
-
-  async enroll(classId: number, userId: number) {
-    const [classData] = await this.drizzle.db
-      .select()
-      .from(classes)
-      .where(and(eq(classes.id, classId), notDeleted(classes)));
-
-    if (!classData) {
-      throw new NotFoundException('Aula não encontrada');
-    }
-
-    const [user] = await this.drizzle.db
-      .select()
-      .from(users)
-      .where(and(eq(users.id, userId), notDeleted(users)));
-
-    if (!user) {
-      throw new NotFoundException('Usuário não encontrado');
-    }
-
-    if (classData.enrolledById && classData.enrolledById !== userId) {
-      throw new BadRequestException(
-        'Aula já está inscrita por outro professor',
-      );
-    }
-
-    if (classData.enrolledById === userId) {
-      throw new BadRequestException('Você já está inscrito nesta aula');
-    }
-
-    const [updated] = await this.drizzle.db
-      .update(classes)
-      .set({ enrolledById: userId })
-      .where(eq(classes.id, classId))
-      .returning();
-    return updated;
-  }
-
-  async unenroll(classId: number, userId: number) {
-    const [classData] = await this.drizzle.db
-      .select()
-      .from(classes)
-      .where(and(eq(classes.id, classId), notDeleted(classes)));
-
-    if (!classData) {
-      throw new NotFoundException('Aula não encontrada');
-    }
-
-    if (!classData.enrolledById) {
-      throw new BadRequestException('Aula não está inscrita por ninguém');
-    }
-
-    if (classData.enrolledById !== userId) {
-      throw new ForbiddenException(
-        'Apenas o professor inscrito pode cancelar inscrição',
-      );
-    }
-
-    const [updated] = await this.drizzle.db
-      .update(classes)
-      .set({ enrolledById: null })
-      .where(eq(classes.id, classId))
-      .returning();
-    return updated;
   }
 
   // Fase 4 (COULD) do Design Doc — indicador estatístico simples (não

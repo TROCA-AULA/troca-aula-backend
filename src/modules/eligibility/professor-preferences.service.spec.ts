@@ -23,8 +23,10 @@ describe('ProfessorPreferencesService', () => {
     query: {
       professorNetworkInterests: { findMany: jest.fn() },
       professorSchoolExclusions: { findMany: jest.fn() },
-      networks: { findFirst: jest.fn() },
-      schools: { findFirst: jest.fn() },
+      networks: { findFirst: jest.fn(), findMany: jest.fn() },
+      schools: { findFirst: jest.fn(), findMany: jest.fn() },
+      users: { findFirst: jest.fn() },
+      usersProfilesSchools: { findFirst: jest.fn() },
     },
     insert: jest.fn(() => chain()),
     delete: jest.fn(() => chain()),
@@ -37,19 +39,56 @@ describe('ProfessorPreferencesService', () => {
     mockDb.query.professorSchoolExclusions.findMany.mockResolvedValue([]);
     mockDb.query.networks.findFirst.mockResolvedValue(null);
     mockDb.query.schools.findFirst.mockResolvedValue(null);
+    mockDb.query.users.findFirst.mockResolvedValue({
+      residenceNetworkId: null,
+    });
+    mockDb.query.usersProfilesSchools.findFirst.mockResolvedValue(undefined);
     mockDb.insert.mockImplementation(() => chain());
     mockDb.delete.mockImplementation(() => chain());
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfessorPreferencesService,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<ProfessorPreferencesService>(
       ProfessorPreferencesService,
     );
+  });
+
+  describe('options (D5: inclui outros municípios)', () => {
+    it('devolve todas as redes e escolas, só com id, nome e rede', async () => {
+      mockDb.query.networks.findMany.mockResolvedValue([
+        { id: 1, name: 'Guariba' },
+        { id: 2, name: 'Jaboticabal' },
+      ]);
+      mockDb.query.schools.findMany.mockResolvedValue([
+        { id: 5, name: 'EMEF Alfa', networkId: 2 },
+      ]);
+
+      const result = await service.options();
+
+      expect(result).toEqual({
+        networks: [
+          { id: 1, name: 'Guariba' },
+          { id: 2, name: 'Jaboticabal' },
+        ],
+        schools: [{ id: 5, name: 'EMEF Alfa', networkId: 2 }],
+      });
+      expect(mockDb.query.schools.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: { id: true, name: true, networkId: true },
+        }),
+      );
+    });
   });
 
   describe('getMine', () => {
@@ -70,6 +109,9 @@ describe('ProfessorPreferencesService', () => {
       expect(result).toEqual({
         networkInterests: [{ networkId: 2, networkName: 'Rede Azul' }],
         schoolExclusions: [{ schoolId: 5, schoolName: 'Escola X' }],
+        residenceNetworkId: null,
+        residenceNetworkName: null,
+        hasContract: false,
       });
     });
 
@@ -86,6 +128,9 @@ describe('ProfessorPreferencesService', () => {
       expect(result).toEqual({
         networkInterests: [{ networkId: 2, networkName: null }],
         schoolExclusions: [{ schoolId: 5, schoolName: null }],
+        residenceNetworkId: null,
+        residenceNetworkName: null,
+        hasContract: false,
       });
 
       mockDb.query.professorNetworkInterests.findMany.mockResolvedValue([]);
@@ -94,6 +139,33 @@ describe('ProfessorPreferencesService', () => {
       await expect(service.getMine(10)).resolves.toEqual({
         networkInterests: [],
         schoolExclusions: [],
+        residenceNetworkId: null,
+        residenceNetworkName: null,
+        hasContract: false,
+      });
+    });
+
+    it('mostra o município onde mora e se o professor tem contrato', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({ residenceNetworkId: 2 });
+      mockDb.query.networks.findFirst.mockResolvedValue({
+        id: 2,
+        name: 'Guariba',
+      });
+      mockDb.query.usersProfilesSchools.findFirst.mockResolvedValue({
+        userId: 10,
+      });
+
+      await expect(service.getMine(10)).resolves.toMatchObject({
+        residenceNetworkId: 2,
+        residenceNetworkName: 'Guariba',
+        hasContract: true,
+      });
+
+      mockDb.query.networks.findFirst.mockResolvedValue(undefined);
+      mockDb.query.users.findFirst.mockResolvedValue(undefined);
+      await expect(service.getMine(10)).resolves.toMatchObject({
+        residenceNetworkId: null,
+        residenceNetworkName: null,
       });
     });
   });

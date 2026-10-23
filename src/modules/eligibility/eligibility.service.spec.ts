@@ -3,17 +3,20 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EligibilityService } from './eligibility.service';
 import { DrizzleService } from '../../database/drizzle.service';
 import { TenantContextService } from '../auth/tenant/tenant-context.service';
+import { createDrizzleChainMock } from '../../database/test-utils/drizzle-chain-mock';
 
-// Motor da Fase 5 no modelo de GRUPOS por escola (definido com o
-// stakeholder): grupo do professor → delay do grupo; sem grupo → delay
-// padrão da escola; regra do município (interconexões + restrição da
-// escola, "mais restritivo vence"); exclusão do professor vence tudo;
-// escolas sem grupos mantêm o fallback da janela única.
+// Motor da Fase 5 no modelo de GRUPOS DE PRIORIDADE por escola (definido
+// com o stakeholder): grupo do professor → tempo do grupo (prioridade 0
+// primeiro); escola sem grupos → todos na hora; escola com grupos → quem
+// está sem grupo é o último; regra do município (interconexões + restrição
+// da escola, "mais restritivo vence"); exclusão do professor vence tudo;
+// escola que não dá para ler → vaga escondida (falha fechada, D4).
 describe('EligibilityService (Fase 5 — grupos)', () => {
   let service: EligibilityService;
   let tenantContextService: { resolve: jest.Mock };
 
   const mockDb = {
+    select: jest.fn(),
     query: {
       professorSchoolExclusions: { findMany: jest.fn() },
       professorNetworkInterests: { findMany: jest.fn() },
@@ -32,14 +35,12 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     id: number,
     networkId: number,
     extras: Partial<{
-      priorityWindowHours: number | null;
       ungroupedDelayMinutes: number;
       acceptedNetworkIds: number[] | null;
     }> = {},
   ) => ({
     id,
     networkId,
-    priorityWindowHours: extras.priorityWindowHours ?? null,
     ungroupedDelayMinutes: extras.ungroupedDelayMinutes ?? 0,
     acceptedNetworkIds: extras.acceptedNetworkIds ?? null,
   });
@@ -62,11 +63,21 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     mockDb.query.schools.findMany.mockResolvedValue([]);
     mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([]);
     mockDb.query.networkInterconnections.findMany.mockResolvedValue([]);
+    // Município de residência (só lido quando o professor não tem vínculo).
+    mockDb.select.mockReturnValue(
+      createDrizzleChainMock([{ residenceNetworkId: null }]),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EligibilityService,
-        { provide: DrizzleService, useValue: { db: mockDb } },
+        {
+          provide: DrizzleService,
+          useValue: {
+            db: mockDb,
+            runPrivileged: (fn: () => unknown) => fn(),
+          },
+        },
         { provide: TenantContextService, useValue: tenantContextService },
       ],
     }).compile();
@@ -107,14 +118,20 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     });
     mockDb.query.schools.findMany.mockResolvedValue([schoolRow(5, 1)]);
     mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
-      { id: 1, schoolId: 5 },
-      { id: 2, schoolId: 5 },
+      { id: 1, schoolId: 5, delayMinutes: 0 },
+      { id: 2, schoolId: 5, delayMinutes: 120 },
     ]);
     mockDb.query.professorSchoolGroups.findMany.mockResolvedValue([
       {
         professorId: 10,
         groupId: 2,
-        group: { id: 2, schoolId: 5, name: 'Prioridade', delayMinutes: 120 },
+        group: {
+          id: 2,
+          schoolId: 5,
+          name: 'Prioridade',
+          priority: 1,
+          delayMinutes: 120,
+        },
       },
     ]);
 
@@ -133,7 +150,7 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     expect(opened).toMatchObject({ visible: true, groupName: 'Prioridade' });
   });
 
-  it('se o professor estiver em mais de um grupo da escola, vale o de menor delay', async () => {
+  it('se o professor estiver em mais de um grupo da escola, vale o de maior prioridade (menor número)', async () => {
     tenantContextService.resolve.mockResolvedValue({
       userId: 10,
       isMaster: false,
@@ -150,18 +167,43 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     });
     mockDb.query.schools.findMany.mockResolvedValue([schoolRow(5, 1)]);
     mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
-      { id: 1, schoolId: 5 },
+      { id: 1, schoolId: 5, delayMinutes: 300 },
+      { id: 2, schoolId: 5, delayMinutes: 30 },
+      { id: 3, schoolId: 5, delayMinutes: 30 },
     ]);
     mockDb.query.professorSchoolGroups.findMany.mockResolvedValue([
       {
         professorId: 10,
         groupId: 1,
-        group: { id: 1, schoolId: 5, name: 'Lento', delayMinutes: 300 },
+        group: {
+          id: 1,
+          schoolId: 5,
+          name: 'Lento',
+          priority: 2,
+          delayMinutes: 300,
+        },
+      },
+      {
+        professorId: 10,
+        groupId: 3,
+        group: {
+          id: 3,
+          schoolId: 5,
+          name: 'Empate lento',
+          priority: 0,
+          delayMinutes: 45,
+        },
       },
       {
         professorId: 10,
         groupId: 2,
-        group: { id: 2, schoolId: 5, name: 'Rápido', delayMinutes: 30 },
+        group: {
+          id: 2,
+          schoolId: 5,
+          name: 'Rápido',
+          priority: 0,
+          delayMinutes: 30,
+        },
       },
     ]);
 
@@ -172,26 +214,61 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     expect(verdict).toMatchObject({ visible: true, groupName: 'Rápido' });
   });
 
-  it('professor fora de qualquer grupo espera o delay padrão da escola', async () => {
-    tenantContextService.resolve.mockResolvedValue({
-      userId: 10,
-      isMaster: false,
-      subjectId: 1,
-      links: [
-        {
-          schoolId: 6,
-          profileId: 3,
-          profileName: 'PROFESSOR',
-          approvedAt: new Date(),
-          networkId: 1,
-        },
-      ],
-    });
+  const professorDaRede1 = {
+    userId: 10,
+    isMaster: false,
+    subjectId: 1,
+    links: [
+      {
+        schoolId: 6,
+        profileId: 3,
+        profileName: 'PROFESSOR',
+        approvedAt: new Date(),
+        networkId: 1,
+      },
+    ],
+  };
+
+  it('escola SEM grupos: todo professor que passou na regra de rede vê na hora', async () => {
+    tenantContextService.resolve.mockResolvedValue(professorDaRede1);
+    mockDb.query.schools.findMany.mockResolvedValue([
+      schoolRow(5, 1, { ungroupedDelayMinutes: 999 }),
+    ]);
+
+    const [verdict] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(0) },
+    ]);
+
+    expect(verdict).toEqual({ visible: true });
+  });
+
+  it('escola COM grupos: quem está sem grupo é o último (espera o grupo mais demorado)', async () => {
+    tenantContextService.resolve.mockResolvedValue(professorDaRede1);
+    mockDb.query.schools.findMany.mockResolvedValue([schoolRow(5, 1)]);
+    mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
+      { id: 1, schoolId: 5, delayMinutes: 0 },
+      { id: 2, schoolId: 5, delayMinutes: 90 },
+    ]);
+
+    const [before] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(80) },
+    ]);
+    expect(before).toMatchObject({ visible: false, reason: 'PRIORITY_WINDOW' });
+    expect(before.message).toContain('sem grupo');
+
+    const [after] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(95) },
+    ]);
+    expect(after.visible).toBe(true);
+  });
+
+  it('a espera extra de quem está sem grupo só vale se for maior que a do último grupo', async () => {
+    tenantContextService.resolve.mockResolvedValue(professorDaRede1);
     mockDb.query.schools.findMany.mockResolvedValue([
       schoolRow(5, 1, { ungroupedDelayMinutes: 180 }),
     ]);
     mockDb.query.schoolTeacherGroups.findMany.mockResolvedValue([
-      { id: 1, schoolId: 5 },
+      { id: 1, schoolId: 5, delayMinutes: 60 },
     ]);
 
     const [before] = await service.evaluateMany(10, [
@@ -203,6 +280,27 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
       { schoolId: 5, createdAt: createdAgo(190) },
     ]);
     expect(after.visible).toBe(true);
+  });
+
+  it('escola que não foi encontrada (ex.: escondida pelo RLS) NÃO libera a vaga (D4)', async () => {
+    tenantContextService.resolve.mockResolvedValue(professorDaRede1);
+    mockDb.query.schools.findMany.mockResolvedValue([]);
+
+    const [verdict] = await service.evaluateMany(10, [
+      { schoolId: 77, createdAt: createdAgo(10_000) },
+    ]);
+
+    expect(verdict).toMatchObject({ visible: false, reason: 'NETWORK' });
+  });
+
+  it('professor sem vínculo nem interesse não vê vaga de rede nenhuma (D4)', async () => {
+    mockDb.query.schools.findMany.mockResolvedValue([schoolRow(5, 1)]);
+
+    const [verdict] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(10_000) },
+    ]);
+
+    expect(verdict).toMatchObject({ visible: false, reason: 'NETWORK' });
   });
 
   it('regra do município: rede só mostra para redes interconectadas (vínculo ou interesse)', async () => {
@@ -242,6 +340,52 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
     expect(interested.visible).toBe(true);
   });
 
+  it('sem contrato em escola nenhuma, o município onde mora conta como o dele', async () => {
+    mockDb.query.schools.findMany.mockResolvedValue([
+      schoolRow(5, 1),
+      schoolRow(6, 2),
+    ]);
+    mockDb.select.mockReturnValue(
+      createDrizzleChainMock([{ residenceNetworkId: 1 }]),
+    );
+
+    const [ownCity, otherCity] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(1) },
+      { schoolId: 6, createdAt: createdAgo(1) },
+    ]);
+
+    expect(ownCity.visible).toBe(true);
+    expect(otherCity).toMatchObject({ visible: false, reason: 'NETWORK' });
+  });
+
+  it('contrato prevalece sobre residência: com vínculo, a cidade onde mora é ignorada', async () => {
+    mockDb.query.schools.findMany.mockResolvedValue([schoolRow(5, 1)]);
+    mockDb.select.mockReturnValue(
+      createDrizzleChainMock([{ residenceNetworkId: 1 }]),
+    );
+    tenantContextService.resolve.mockResolvedValue({
+      userId: 10,
+      isMaster: false,
+      subjectId: 1,
+      links: [
+        {
+          schoolId: 9,
+          profileId: 3,
+          profileName: 'PROFESSOR',
+          approvedAt: new Date(),
+          networkId: 3,
+        },
+      ],
+    });
+
+    const [verdict] = await service.evaluateMany(10, [
+      { schoolId: 5, createdAt: createdAgo(1) },
+    ]);
+
+    expect(verdict).toMatchObject({ visible: false, reason: 'NETWORK' });
+    expect(mockDb.select).not.toHaveBeenCalled();
+  });
+
   it('escola pode restringir mais que a rede, nunca menos', async () => {
     mockDb.query.schools.findMany.mockResolvedValue([
       // Rede interconecta com 2 e 3, mas a escola só aceita a 3.
@@ -267,66 +411,5 @@ describe('EligibilityService (Fase 5 — grupos)', () => {
       { schoolId: 5, createdAt: createdAgo(1) },
     ]);
     expect(allowed.visible).toBe(true);
-  });
-
-  it('escola sem grupos mantém o fallback da janela única (priorityWindowHours)', async () => {
-    // Professor de OUTRA rede, mas interconectada (senão a regra do
-    // município bloquearia antes de chegar na janela).
-    mockDb.query.networkInterconnections.findMany.mockResolvedValue([
-      { originNetworkId: 1, allowedNetworkId: 2 },
-    ]);
-    tenantContextService.resolve.mockResolvedValue({
-      userId: 10,
-      isMaster: false,
-      subjectId: 1,
-      links: [
-        {
-          schoolId: 9,
-          profileId: 3,
-          profileName: 'PROFESSOR',
-          approvedAt: new Date(),
-          networkId: 2,
-        },
-      ],
-    });
-    mockDb.query.schools.findMany.mockResolvedValue([
-      schoolRow(5, 1, { priorityWindowHours: 24 }),
-    ]);
-
-    const [duringWindow] = await service.evaluateMany(10, [
-      { schoolId: 5, createdAt: createdAgo(60) },
-    ]);
-    expect(duringWindow).toMatchObject({
-      visible: false,
-      reason: 'PRIORITY_WINDOW',
-    });
-
-    const [afterWindow] = await service.evaluateMany(10, [
-      { schoolId: 5, createdAt: createdAgo(25 * 60) },
-    ]);
-    expect(afterWindow.visible).toBe(true);
-
-    // Vinculado à própria escola vê na hora, mesmo dentro da janela.
-    tenantContextService.resolve.mockResolvedValue({
-      userId: 10,
-      isMaster: false,
-      subjectId: 1,
-      links: [
-        {
-          schoolId: 5,
-          profileId: 3,
-          profileName: 'PROFESSOR',
-          approvedAt: new Date(),
-          networkId: 1,
-        },
-      ],
-    });
-    mockDb.query.schools.findMany.mockResolvedValue([
-      schoolRow(5, 1, { priorityWindowHours: 24 }),
-    ]);
-    const [linked] = await service.evaluateMany(10, [
-      { schoolId: 5, createdAt: createdAgo(1) },
-    ]);
-    expect(linked.visible).toBe(true);
   });
 });

@@ -28,6 +28,13 @@ export class ProfessorPreferencesController {
     return this.service.getMine(req.user.id);
   }
 
+  // Lista de redes e escolas (id, nome, rede) para o professor escolher
+  // interesse/exclusão — inclui outros municípios (D5).
+  @Get('options')
+  options() {
+    return this.service.options();
+  }
+
   @Post('network-interests')
   addNetworkInterest(
     @Body() dto: NetworkReferenceDto,

@@ -9,21 +9,37 @@ describe('WorkloadPoliciesController', () => {
     update: jest.fn(),
   };
 
+  const mockTenant = { assertCanManageNetwork: jest.fn() };
+  const req = { user: { id: 7 } };
+
   let controller: WorkloadPoliciesController;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new WorkloadPoliciesController(mockService as any);
+    controller = new WorkloadPoliciesController(
+      mockService as any,
+      mockTenant as any,
+    );
   });
 
-  it('create forwards the dto', async () => {
+  it('create confere a rede de quem pede e repassa o dto', async () => {
     const dto = { networkId: 1, workloadTypeId: 4, maxHoursPerWeek: 10 };
     mockService.create.mockResolvedValue({ id: 1, ...dto });
 
-    const result = await controller.create(dto);
+    const result = await controller.create(dto, req);
 
+    expect(mockTenant.assertCanManageNetwork).toHaveBeenCalledWith(7, 1);
     expect(mockService.create).toHaveBeenCalledWith(dto);
     expect(result).toEqual({ id: 1, ...dto });
+  });
+
+  it('create não grava quando a rede não é de quem pede', async () => {
+    mockTenant.assertCanManageNetwork.mockRejectedValueOnce(new Error('403'));
+
+    await expect(
+      controller.create({ networkId: 9, workloadTypeId: 4 } as any, req),
+    ).rejects.toThrow('403');
+    expect(mockService.create).not.toHaveBeenCalled();
   });
 
   it('findAll converts a provided networkId', async () => {
@@ -54,10 +70,12 @@ describe('WorkloadPoliciesController', () => {
 
   it('update forwards the converted id and the dto', async () => {
     const dto = { maxHoursPerWeek: 12 };
+    mockService.findOne.mockResolvedValue({ id: 3, networkId: 5 });
     mockService.update.mockResolvedValue({ id: 3, ...dto });
 
-    const result = await controller.update('3', dto);
+    const result = await controller.update('3', dto, req);
 
+    expect(mockTenant.assertCanManageNetwork).toHaveBeenCalledWith(7, 5);
     expect(mockService.update).toHaveBeenCalledWith(3, dto);
     expect(result).toEqual({ id: 3, ...dto });
   });
