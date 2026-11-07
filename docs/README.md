@@ -22,7 +22,7 @@ A documentação está organizada em seções que abordam diferentes aspectos do
 
 ### Seção 3: Regras e Fluxos de Negócio
 
-**04-regras-negocio.md** — Detalha todas as regras de negócio implementadas no sistema, incluindo regras de autenticação, swap request (troca de aulas), enrollment (inscrição), classes (aulas) e usuários. Contém também a matriz de permissões que define o que cada perfil de usuário pode fazer.
+**04-regras-negocio.md** — Detalha todas as regras de negócio implementadas no sistema, incluindo regras de autenticação, candidatura a aulas vagas (enrollment requests), classes (aulas), jornada docente e usuários. Contém também a matriz de permissões que define o que cada perfil de usuário pode fazer.
 
 **05-user-stories.md** — Apresenta as user stories do projeto, descrevendo funcionalidades do ponto de vista do usuário final. Cada user story inclui critérios de aceitação e, em alguns casos, diagramas de fluxo.
 

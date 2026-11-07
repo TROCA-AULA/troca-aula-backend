@@ -1,0 +1,1 @@
+ALTER TABLE "Schools" ADD COLUMN "priorityWindowHours" integer;

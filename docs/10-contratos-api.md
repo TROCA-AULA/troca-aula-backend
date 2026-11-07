@@ -1,938 +1,117 @@
-# Contratos da API —Frontend Integration
+# Contratos da API (formato das chamadas)
 
-Este documento contém todos os contratos da API do Sistema Troca Aula, com exemplos de curl, payloads e respostas para integração com o frontend.
+> **Atualizado em 2026-10-22.** A versão anterior deste arquivo usava porta 3000, um envelope `{data, message, statusCode}` que a API **não** usa e não tinha as rotas multi-tenant. Foi substituída por este resumo fiel ao código.
+>
+> - **Lista completa de rotas** (quem pode chamar, corpo, erros): [`03-endpoints.md`](./03-endpoints.md)
+> - **Exemplos executáveis com o resultado esperado:** `docs/guias-de-teste/03-guia-api-requests.md` (raiz do projeto)
+> - **Swagger:** `http://localhost:5000/api`
 
----
+## 1. Endereço e autenticação
 
-## Autenticação
+- Base local: `http://localhost:5000` (`PORT` no `.env`).
+- Login:
 
-### POST /auth/login
+  ```http
+  POST /auth/login
+  Content-Type: application/json
 
-Realiza login no sistema e retorna token JWT.
+  {"email": "professor@escola.com", "password": "Senha@123"}
+  ```
 
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "professor@escola.com", "password": "senha123"}'
-```
+  Resposta `200`:
 
-**Payload (Request):**
-```json
-{
-  "email": "professor@escola.com",
-  "password": "senha123"
+  ```json
+  { "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+  ```
+
+- Nas demais chamadas: `Authorization: Bearer <access_token>`.
+- **Payload do JWT** (`sub`): o usuário sem a senha, com `upsUser: [{schoolId, userId, profileId, approvedAt, approvedById, networkId}]`. É daí que o front tira perfil, escolas e rede ativa.
+  - ⚠️ Hoje o `networkId` desses vínculos vem `null` (defeito D5, efeito do RLS no login).
+  - O token expira (`exp`) depois de `JWT_EXPIRES_IN` (padrão 12h). `POST /auth/refresh` devolve um token novo com os dados atuais; o front chama ao abrir/recarregar uma tela (`/api/auth/me?refresh=1`) e, num 401 por sessão vencida, avisa e volta ao login.
+- **Frontend:** as telas **não** mandam o Bearer pelo navegador. O login grava o token num cookie `httpOnly` (`/api/auth/login` do Next), e as chamadas passam pelo proxy `/api/proxy/...`, que anexa o header no servidor.
+
+## 2. Formato das respostas
+
+| Situação | Formato |
+|---|---|
+| Sucesso com um item | O próprio objeto, ex.: `{"id": 1, "name": "EMEF Alfa", "networkId": 2, ...}` |
+| Sucesso com lista | Array: `[{...}, {...}]` |
+| Erro de regra/permissão | `{"message": "Você só pode se candidatar a aulas da sua matéria", "error": "Forbidden", "statusCode": 403}` |
+| Erro de validação | `{"message": ["name should not be empty", "name must be a string"], "error": "Bad Request", "statusCode": 400}` |
+| Erro inesperado | `{"statusCode": 500, "message": "Internal server error"}` — sempre é bug (ex.: D13) |
+
+> Não há envelope `{data, message}`. Os services do front usam `response.data?.data ?? response.data`, que funciona nos dois formatos.
+
+### Códigos usados
+
+| Código | Quando |
+|---|---|
+| 200 / 201 | Sucesso (POST costuma devolver 201) |
+| 400 | Dado inválido ou regra de negócio (pendente repetida, teto de horas, conflito, limite, fechar sem revisar...) |
+| 401 | Sem token / token inválido / senha errada |
+| 403 | Logado, mas sem permissão (perfil, escola, elegibilidade da vaga) |
+| 404 | Recurso não existe |
+| 501 | Gov.br (stub) |
+
+## 3. Regras de envio
+
+- `ValidationPipe` com `whitelist` e `forbidNonWhitelisted`: **campo extra no corpo gera 400** (`property X should not exist`).
+- Mande `Content-Type: application/json` **só quando houver corpo**; com o header e o corpo vazio, o servidor responde 400 "Body cannot be empty when content-type is set to 'application/json'".
+- Datas: ISO 8601 (`2026-10-23T10:00:00.000Z`); `validFrom/validTo` aceitam `YYYY-MM-DD`; `referenceMonth` é `YYYY-MM`.
+- **Nomes com erro de digitação que são o contrato real** (não "corrija" no cliente): `Classes.createdByd`, `Classes.statededAt`, `Classes.registredById`.
+
+## 4. Formato das entidades principais
+
+```jsonc
+// Usuário (nunca traz "password")
+{ "id": 5, "name": "Prof. Ana", "email": "ana@escola.local", "phone": "16999990000",
+  "subjectId": 2, "substitutionLimitPerSemester": null, "createdAt": "...", "deletedAt": null }
+
+// Vínculo (POST /users/:id/assign-profile)
+{ "schoolId": 2, "userId": 5, "profileId": 3, "createdAt": "...", "approvedAt": "...", "approvedById": 1 }
+
+// Aula
+{ "id": 10, "schoolId": 2, "subjectId": 2, "createdByd": 3, "statededAt": "...", "finishedAt": "...",
+  "available": true, "enrolledById": null, "dayOfWeek": null, "startTime": null, "endTime": null,
+  "createdAt": "...", "deletedAt": null,
+  // em GET /classes vêm também: "school", "subject", "createdBy", "enrolledBy"
 }
-```
-
-**Response (200) — Sucesso:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJwcm9mZXNzb3JAZXNjb2xhLmNvbSIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDM2MDAwfQ.xxxxxxxx",
-  "data": null,
-  "message": "Login realizado com sucesso",
-  "statusCode": 200
-}
-```
-
-**Response (401) — Erro:**
-```json
-{
-  "statusCode": 401,
-  "message": "Credenciais inválidas",
-  "error": "Unauthorized"
-}
-```
-
----
-
-## Autenticação Gov.br
-
-### POST /auth/login-govbr
-
-Autenticação via Conta Gov.br (em desenvolvimento).
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/auth/login-govbr \
-  -H "Content-Type: application/json" \
-  -d '{"token": "govbr_token_aqui"}'
-```
-
-**Payload (Request):**
-```json
-{
-  "token": "govbr_token_aqui"
-}
-```
-
-**Response (401) — Recurso em desenvolvimento:**
-```json
-{
-  "statusCode": 401,
-  "message": "Recurso em desenvolvimento",
-  "error": "Unauthorized"
-}
-```
-
----
-
-## Users (Usuários)
-
-### POST /users
-
-Cria um novo usuário no sistema.
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "João Silva",
-    "email": "joao.silva@escola.com",
-    "phone": "11999999999",
-    "password": "senha123",
-    "subjectId": 1
-  }'
-```
-
-**Payload:**
-```json
-{
-  "name": "João Silva",
-  "email": "joao.silva@escola.com",
-  "phone": "11999999999",
-  "password": "senha123",
-  "subjectId": 1
-}
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "João Silva",
-    "email": "joao.silva@escola.com",
-    "phone": "11999999999",
-    "subjectId": 1,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Usuário criado com sucesso",
-  "statusCode": 201
-}
-```
-
-### GET /users
-
-Lista todos os usuários.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/users \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "João Silva",
-      "email": "joao.silva@escola.com",
-      "phone": "11999999999",
-      "subjectId": 1,
-      "createdAt": "2026-05-15T10:00:00.000Z"
-    },
-    {
-      "id": 2,
-      "name": "Maria Santos",
-      "email": "maria.santos@escola.com",
-      "phone": "11888888888",
-      "subjectId": 2,
-      "createdAt": "2026-05-15T11:00:00.000Z"
-    }
-  ],
-  "message": "Usuários encontrados",
-  "statusCode": 200
-}
-```
-
-### GET /users/:id
-
-Busca usuário por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/users/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "João Silva",
-    "email": "joao.silva@escola.com",
-    "phone": "11999999999",
-    "subjectId": 1,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Usuário encontrado",
-  "statusCode": 200
-}
-```
-
-**Response (404):**
-```json
-{
-  "statusCode": 404,
-  "message": "Usuário não encontrado",
-  "error": "Not Found"
-}
-```
-
-### PATCH /users/:id
-
-Atualiza usuário.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/users/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "João Silva Atualizado"}'
-```
-
-**Payload:**
-```json
-{
-  "name": "João Silva Atualizado",
-  "phone": "11999999999",
-  "subjectId": 1
-}
-```
-
-**Response (200):**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "João Silva Atualizado",
-    "email": "joao.silva@escola.com",
-    "phone": "11999999999",
-    "subjectId": 1,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Usuário atualizado com sucesso",
-  "statusCode": 200
-}
-```
-
-### DELETE /users/:id
-
-Remove usuário (soft delete).
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/users/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": null,
-  "message": "Usuário removido com sucesso",
-  "statusCode": 200
-}
-```
-
----
-
-## Schools (Escolas)
-
-### POST /schools
-
-Cria nova escola.
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/schools \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Escola Municipal João Paulo"}'
-```
-
-**Payload:**
-```json
-{
-  "name": "Escola Municipal João Paulo",
-  "substitutionLimitPerSemester": 10
-}
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "Escola Municipal João Paulo",
-    "substitutionLimitPerSemester": 10,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Escola criada com sucesso",
-  "statusCode": 201
-}
-```
-
-### GET /schools
-
-Lista todas as escolas.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/schools \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Escola Municipal João Paulo",
-      "createdAt": "2026-05-15T10:00:00.000Z"
-    }
-  ],
-  "message": "Escolas encontradas",
-  "statusCode": 200
-}
-```
-
-### GET /schools/:id
-
-Busca escola por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/schools/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-### PATCH /schools/:id
-
-Atualiza escola.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/schools/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Escola Municipal Novo Nome"}'
-```
-
-### DELETE /schools/:id
-
-Remove escola.
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/schools/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
----
-
-## Subjects (Disciplinas)
-
-### POST /subjects
-
-Cria nova disciplina.
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/subjects \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Matemática"}'
-```
-
-**Payload:**
-```json
-{
-  "name": "Matemática"
-}
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "name": "Matemática",
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Disciplina criada com sucesso",
-  "statusCode": 201
-}
-```
-
-### GET /subjects
-
-Lista todas as disciplinas.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/subjects \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": [
-    { "id": 1, "name": "Matemática", "createdAt": "2026-05-15T10:00:00.000Z" },
-    { "id": 2, "name": "Português", "createdAt": "2026-05-15T11:00:00.000Z" },
-    { "id": 3, "name": "História", "createdAt": "2026-05-15T12:00:00.000Z" }
-  ],
-  "message": "Disciplinas encontradas",
-  "statusCode": 200
-}
-```
-
-### GET /subjects/:id
-
-Busca disciplina por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/subjects/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-### PATCH /subjects/:id
-
-Atualiza disciplina.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/subjects/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Matemática Avançada"}'
-```
-
-### DELETE /subjects/:id
-
-Remove disciplina.
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/subjects/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
----
-
-## Classes (Aulas)
-
-### POST /classes
 
-Cria uma nova aula (aula vaga).
+// Candidatura
+{ "id": 7, "classId": 10, "professorId": 5, "status": "PENDING|APPROVED|REJECTED|CANCELLED",
+  "createdAt": "...", "updatedAt": "..." }
 
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/classes \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "schoolId": 1,
-    "subjectId": 1,
-    "dayOfWeek": 2,
-    "startTime": "10:00",
-    "endTime": "11:00"
-  }'
-```
-
-**Payload:**
-```json
-{
-  "schoolId": 1,
-  "subjectId": 1,
-  "dayOfWeek": 2,
-  "startTime": "10:00",
-  "endTime": "11:00"
-}
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "schoolId": 1,
-    "subjectId": 1,
-    "dayOfWeek": 2,
-    "startTime": "10:00",
-    "endTime": "11:00",
-    "available": true,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Aula criada com sucesso",
-  "statusCode": 201
-}
-```
-
-### GET /classes
-
-Lista aulas com filtros.
-
-**Curl:**
-```bash
-# Sem filtros
-curl -X GET "http://localhost:3000/classes" \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-
-# Com filtros
-curl -X GET "http://localhost:3000/classes?schoolId=1&subjectId=1&available=true" \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Query Params:**
-| Parâmetro | Tipo | Descrição |
-|-----------|------|------------|
-| schoolId | number | Filtrar por escola |
-| subjectId | number | Filtrar por disciplina |
-| available | boolean | Filtrar por disponibilidade |
-| dayOfWeek | number | Filtrar por dia (1-7) |
-
-**Response (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "schoolId": 1,
-      "subjectId": 1,
-      "dayOfWeek": 2,
-      "startTime": "10:00",
-      "endTime": "11:00",
-      "available": true,
-      "createdAt": "2026-05-15T10:00:00.000Z"
-    }
-  ],
-  "message": "Aulas encontradas",
-  "statusCode": 200
-}
-```
-
-### GET /classes/:id
-
-Busca aula por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/classes/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": {
-    "id": 1,
-    "schoolId": 1,
-    "subjectId": 1,
-    "dayOfWeek": 2,
-    "startTime": "10:00",
-    "endTime": "11:00",
-    "available": true,
-    "createdAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Aula encontrada",
-  "statusCode": 200
-}
-```
-
-### PATCH /classes/:id
-
-Atualiza aula.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/classes/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{"dayOfWeek": 3, "startTime": "14:00"}'
-```
-
-**Payload (exemplo):**
-```json
-{
-  "dayOfWeek": 3,
-  "startTime": "14:00",
-  "endTime": "15:00"
-}
-```
-
-### DELETE /classes/:id
-
-Remove aula (soft delete).
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/classes/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": null,
-  "message": "Aula removida com sucesso",
-  "statusCode": 200
-}
-```
-
-### POST /classes/:id/enroll
-
-Inscreve professor na aula.
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/classes/1/enroll \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "classId": 1,
-    "professorId": 2,
-    "status": "PENDING",
-    "createdAt": "2026-05-15T10:00:00.000Z",
-    "updatedAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Inscrição realizada com sucesso",
-  "statusCode": 201
-}
-```
-
-**Erros possíveis:**
-- 400: "Aula não está disponível" / "Você já está inscrito nesta aula"
-- 403: "Você só pode se candidatar a aulas da sua matéria"
-
-### DELETE /classes/:id/enroll
-
-Cancela inscrição do professor na aula.
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/classes/1/enroll \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": null,
-  "message": "Inscrição cancelada com sucesso",
-  "statusCode": 200
-}
-```
-
----
-
-## Enrollment Requests (Candidaturas)
-
-### POST /enrollment-requests/request/:classId
-
-Professor solicita inscrição em uma aula vaga.
-
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/enrollment-requests/request/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (201):**
-```json
-{
-  "data": {
-    "id": 1,
-    "classId": 1,
-    "professorId": 2,
-    "status": "PENDING",
-    "createdAt": "2026-05-15T10:00:00.000Z",
-    "updatedAt": "2026-05-15T10:00:00.000Z"
-  },
-  "message": "Candidatura criada com sucesso",
-  "statusCode": 201
-}
-```
-
-**Erros:**
-- 400: "Aula não disponível" / "Já existe candidatura pendente" / "Conflito de horário detectado" / "Limite de substituições atingido para este semestre"
-- 403: "Você só pode se candidatar a aulas da sua matéria"
-- 404: "Aula não encontrada"
-
-### GET /enrollment-requests
-
-Lista candidaturas.
-
-**Curl:**
-```bash
-# Todas as candidaturas
-curl -X GET "http://localhost:3000/enrollment-requests" \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
+// Limite de substituições
+{ "current": 0, "limit": null, "percentage": 0, "canApply": true }
 
-# Com filtro de status
-curl -X GET "http://localhost:3000/enrollment-requests?status=PENDING" \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Query Params:**
-| Parâmetro | Tipo | Descrição |
-|-----------|------|------------|
-| status | string | PENDING, APPROVED, REJECTED, CANCELLED |
-| classId | number | Filtrar por aula |
-| professorId | number | Filtrar por professor |
-
-**Response (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "classId": 1,
-      "professorId": 2,
-      "status": "PENDING",
-      "createdAt": "2026-05-15T10:00:00.000Z",
-      "updatedAt": "2026-05-15T10:00:00.000Z"
-    }
-  ],
-  "message": "Candidaturas encontradas",
-  "statusCode": 200
-}
-```
-
-### GET /enrollment-requests/:id
-
-Busca candidatura por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/enrollment-requests/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-### PATCH /enrollment-requests/:id/approve
-
-Diretor aprova candidatura.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/enrollment-requests/1/approve \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": {
-    "id": 1,
-    "classId": 1,
-    "professorId": 2,
-    "status": "APPROVED",
-    "createdAt": "2026-05-15T10:00:00.000Z",
-    "updatedAt": "2026-05-15T10:05:00.000Z"
-  },
-  "message": "Candidatura aprovada com sucesso",
-  "statusCode": 200
-}
-```
-
-**Erros:**
-- 403: "Apenas diretor pode executar esta ação"
-- 400: "Candidatura não está pendente"
-
-### PATCH /enrollment-requests/:id/reject
-
-Diretor rejeita candidatura.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/enrollment-requests/1/reject \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": {
-    "id": 1,
-    "classId": 1,
-    "professorId": 2,
-    "status": "REJECTED",
-    "createdAt": "2026-05-15T10:00:00.000Z",
-    "updatedAt": "2026-05-15T10:05:00.000Z"
-  },
-  "message": "Candidatura rejeitada",
-  "statusCode": 200
-}
-```
-
-### DELETE /enrollment-requests/:id
-
-Cancela candidatura.
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/enrollment-requests/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-**Response (200):**
-```json
-{
-  "data": null,
-  "message": "Candidatura cancelada com sucesso",
-  "statusCode": 200
-}
-```
-
----
+// Configuração de prioridade da escola (GET/POST /schools/:id/teacher-groups)
+// Grupos em ordem de prioridade (0 recebe primeiro). Quem está sem grupo
+// recebe em ungroupedEffectiveDelayMinutes (null = escola sem grupos: na hora).
+{ "schoolId": 2, "ungroupedDelayMinutes": 120, "ungroupedEffectiveDelayMinutes": 120,
+  "allowedNetworkIds": [3], "allowedNetworks": [ { "id": 3, "name": "Guariba" } ],
+  "acceptedNetworkIds": null,
+  "groups": [ { "id": 1, "name": "Professores da casa", "priority": 0, "delayMinutes": 0, "professorIds": [5] } ] }
 
-## Profiles (Perfis)
+// Coordenadores municipais (GET /network-coordinators)
+[ { "userId": 9, "userName": "Lia", "userEmail": "lia@x.com", "userPhone": "1199",
+    "networkId": 2, "networkName": "Jaboticabal", "approvedAt": "..." } ]
 
-### POST /profile
+// Opções da tela de preferências (GET /professor-preferences/options)
+{ "networks": [ { "id": 2, "name": "Jaboticabal" } ],
+  "schools": [ { "id": 4, "name": "EMEF Alfa", "networkId": 2 } ] }
 
-Cria novo perfil.
+// Indicador
+{ "totalVagas": 3, "cobertas": 1, "taxaCobertura": 0.333, "nivel": "baixo|medio|alto" }
 
-**Curl:**
-```bash
-curl -X POST http://localhost:3000/profile \
-  -H "Content-Type: application/json" \
-  -d '{"name": "DIRETOR", "description": "Perfil de diretor"}'
+// Relatório mensal
+{ "id": 4, "userId": 5, "schoolId": 2, "referenceMonth": "2026-10", "status": "DRAFT|REVIEWED|CLOSED",
+  "workloadBreakdown": { "AULA": 20, "SUPLEMENTAR": 6, "total": 26 },
+  "reviewedById": null, "reviewedAt": null, "createdAt": "..." }
 ```
-
-**Payload:**
-```json
-{
-  "name": "DIRETOR",
-  "description": "Perfil de diretor"
-}
-```
-
-### GET /profile
-
-Lista todos os perfis.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/profile \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-### GET /profile/:id
-
-Busca perfil por ID.
-
-**Curl:**
-```bash
-curl -X GET http://localhost:3000/profile/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
-### PATCH /profile/:id
-
-Atualiza perfil.
-
-**Curl:**
-```bash
-curl -X PATCH http://localhost:3000/profile/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "DIRETOR ESCOLA"}'
-```
-
-### DELETE /profile/:id
-
-Remove perfil.
-
-**Curl:**
-```bash
-curl -X DELETE http://localhost:3000/profile/1 \
-  -H "Authorization: Bearer TOKEN_JWT_AQUI"
-```
-
----
-
-## Tabela de Endpoints Resumo
-
-| Módulo | Método | Endpoint | Auth | Descrição |
-|--------|--------|----------|------|------------|
-| Auth | POST | /auth/login | ❌ | Login |
-| Auth | POST | /auth/login-govbr | ❌ | Login Gov.br (em desenvolvimento) |
-| Users | GET | /users | ✅ | Lista usuários |
-| Users | POST | /users | ❌ | Cria usuário |
-| Users | GET | /users/:id | ✅ | Busca usuário |
-| Users | PATCH | /users/:id | ✅ | Atualiza usuário |
-| Users | DELETE | /users/:id | ✅ | Remove usuário |
-| Schools | GET | /schools | ✅ | Lista escolas |
-| Schools | POST | /schools | ❌ | Cria escola |
-| Schools | GET | /schools/:id | ✅ | Busca escola |
-| Schools | PATCH | /schools/:id | ✅ | Atualiza escola |
-| Schools | DELETE | /schools/:id | ✅ | Remove escola |
-| Subjects | GET | /subjects | ✅ | Lista disciplinas |
-| Subjects | POST | /subjects | ❌ | Cria disciplina |
-| Subjects | GET | /subjects/:id | ✅ | Busca disciplina |
-| Subjects | PATCH | /subjects/:id | ✅ | Atualiza disciplina |
-| Subjects | DELETE | /subjects/:id | ✅ | Remove disciplina |
-| Classes | GET | /classes | ✅ | Lista aulas |
-| Classes | POST | /classes | ✅ | Cria aula |
-| Classes | GET | /classes/:id | ✅ | Busca aula |
-| Classes | PATCH | /classes/:id | ✅ | Atualiza aula |
-| Classes | DELETE | /classes/:id | ✅ | Remove aula |
-| Classes | POST | /classes/:id/enroll | ✅ | Inscreve professor |
-| Classes | DELETE | /classes/:id/enroll | ✅ | Cancela inscrição |
-| Enrollment | GET | /enrollment-requests | ✅ | Lista candidaturas |
-| Enrollment | POST | /enrollment-requests/request/:classId | ✅ | Cria candidatura |
-| Enrollment | GET | /enrollment-requests/:id | ✅ | Busca candidatura |
-| Enrollment | PATCH | /enrollment-requests/:id/approve | ✅ | Aprova candidatura |
-| Enrollment | PATCH | /enrollment-requests/:id/reject | ✅ | Rejeita candidatura |
-| Enrollment | DELETE | /enrollment-requests/:id | ✅ | Cancela candidatura |
-| Profile | GET | /profile | ✅ | Lista perfis |
-| Profile | POST | /profile | ❌ | Cria perfil |
-| Profile | GET | /profile/:id | ✅ | Busca perfil |
-| Profile | PATCH | /profile/:id | ✅ | Atualiza perfil |
-| Profile | DELETE | /profile/:id | ✅ | Remove perfil |
-
----
-
-## Headers Comuns
-
-Para todas as rotas autenticadas (exceto login, users e schools):
-
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-Content-Type: application/json
-```
-
----
 
-## Códigos de Status HTTP
+## 5. Ids fixos que o cliente pode assumir
 
-| Código | Significado |
-|--------|-------------|
-| 200 | Sucesso |
-| 201 | Criado com sucesso |
-| 400 | Erro de validação / dados inválidos |
-| 401 | Não autenticado |
-| 403 | Não autorizado |
-| 404 | Recurso não encontrado |
-| 500 | Erro interno do servidor |
+| Tabela | Ids |
+|---|---|
+| Perfis | `1` DIRETOR · `2` AUXILIAR_ADMIN · `3` PROFESSOR · `4` MASTER · `5` COORDENADOR_MUNICIPAL (este vem de `UserNetworkLinks`, não de vínculo com escola) |
+| Tipos de carga | `1` AULA · `2` PEDAGOGICO_COLETIVO · `3` LIVRE_ESCOLHA · `4` SUPLEMENTAR · `5` SUBSTITUICAO |

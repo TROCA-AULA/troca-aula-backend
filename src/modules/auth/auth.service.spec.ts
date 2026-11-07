@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { TenantContextService } from './tenant/tenant-context.service';
 
 jest.mock('bcrypt');
 
@@ -16,10 +17,19 @@ describe('AuthService', () => {
 
   const mockUsersService = {
     findOneBy: jest.fn(),
+    findOneForToken: jest.fn(),
+    findOne: jest.fn(),
+    updatePassword: jest.fn(),
+  };
+
+  const mockTenantContextService = {
+    resolve: jest.fn().mockResolvedValue({ links: [] }),
   };
 
   const mockConfigService = {
-    get: jest.fn().mockReturnValue('secret'),
+    get: jest.fn((key: string): unknown =>
+      key === 'saltRounds' ? 10 : 'secret',
+    ),
   };
 
   const mockJwtService = {
@@ -42,6 +52,10 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: mockJwtService,
         },
+        {
+          provide: TenantContextService,
+          useValue: mockTenantContextService,
+        },
       ],
     }).compile();
 
@@ -49,6 +63,10 @@ describe('AuthService', () => {
     usersService = module.get<UsersService>(UsersService);
     jwtService = module.get<JwtService>(JwtService);
     config = module.get<ConfigService>(ConfigService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -77,6 +95,36 @@ describe('AuthService', () => {
       expect(result).toEqual({ access_token: 'token' });
     });
 
+    it('should include each link networkId in the token payload without the raw school relation', async () => {
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_password',
+        upsUser: [
+          {
+            id: 9,
+            userId: 1,
+            schoolId: 7,
+            profileId: 3,
+            approvedAt: null,
+            approvedById: null,
+            school: { networkId: 2 },
+          },
+        ],
+      };
+      mockUsersService.findOneBy.mockResolvedValue(user);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockJwtService.signAsync.mockResolvedValue('token');
+
+      await service.signIn('test@test.com', 'password123');
+
+      const payload = mockJwtService.signAsync.mock.calls[0][0];
+      expect(payload.sub.upsUser).toEqual([
+        expect.objectContaining({ schoolId: 7, networkId: 2 }),
+      ]);
+      expect(payload.sub.upsUser[0].school).toBeUndefined();
+    });
+
     it('should throw UnauthorizedException if user not found', async () => {
       mockUsersService.findOneBy.mockResolvedValue(null);
 
@@ -97,6 +145,217 @@ describe('AuthService', () => {
       await expect(
         service.signIn('test@test.com', 'password123'),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    // P3 (problemas-conhecidos.md): migração lazy do esquema legado
+    // (bcrypt sobre Base64(SHA1(senha)), como o frontend antigo enviava) —
+    // login deve continuar funcionando pra contas criadas antes da correção,
+    // e a senha deve ser re-hasheada no novo esquema (bcrypt direto sobre a
+    // senha) na primeira vez que isso acontecer.
+    it('should fall back to the legacy hash scheme and re-hash the password on success', async () => {
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_legacy_password',
+      };
+      mockUsersService.findOneBy.mockResolvedValue(user);
+      (bcrypt.compare as jest.Mock)
+        .mockResolvedValueOnce(false) // novo esquema: não bate
+        .mockResolvedValueOnce(true); // esquema legado: bate
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
+      mockJwtService.signAsync.mockResolvedValue('token');
+
+      const result = await service.signIn('test@test.com', 'password123');
+
+      expect(bcrypt.compare).toHaveBeenNthCalledWith(
+        1,
+        'password123',
+        'hashed_legacy_password',
+      );
+      expect(bcrypt.compare).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String), // Base64(SHA1('password123'))
+        'hashed_legacy_password',
+      );
+      expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10);
+      expect(mockUsersService.updatePassword).toHaveBeenCalledWith(
+        1,
+        'new_hash',
+      );
+      expect(result).toEqual({ access_token: 'token' });
+    });
+
+    it('should throw UnauthorizedException when neither scheme matches', async () => {
+      const user = {
+        id: 1,
+        email: 'test@test.com',
+        password: 'hashed_password',
+      };
+      mockUsersService.findOneBy.mockResolvedValue(user);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.signIn('test@test.com', 'wrong-password'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signIn — coordenador municipal', () => {
+    it('inclui no token um vínculo por escola das redes que ele coordena', async () => {
+      mockUsersService.findOneBy.mockResolvedValue({
+        id: 9,
+        email: 'coord@x.local',
+        password: 'hash',
+        upsUser: [],
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockTenantContextService.resolve.mockResolvedValueOnce({
+        links: [
+          {
+            schoolId: 4,
+            profileId: 5,
+            profileName: 'COORDENADOR_MUNICIPAL',
+            approvedAt: new Date('2026-10-01'),
+            networkId: 2,
+          },
+          {
+            schoolId: 8,
+            profileId: 1,
+            profileName: 'DIRETOR',
+            approvedAt: new Date('2026-10-01'),
+            networkId: 3,
+          },
+        ],
+      });
+      mockJwtService.signAsync.mockResolvedValue('token');
+
+      await service.signIn('coord@x.local', 'Senha@123');
+
+      const payload = mockJwtService.signAsync.mock.calls[0][0];
+      expect(payload.sub.upsUser).toEqual([
+        {
+          schoolId: 4,
+          userId: 9,
+          profileId: 5,
+          approvedAt: new Date('2026-10-01'),
+          networkId: 2,
+        },
+      ]);
+    });
+  });
+
+  describe('refresh (D23) e expiração (D19)', () => {
+    it('emite um token novo com os dados atuais e com validade', async () => {
+      mockUsersService.findOneForToken.mockResolvedValue({
+        id: 4,
+        email: 'p@x.com',
+        password: 'hash',
+        subjectId: 7,
+        upsUser: [
+          {
+            schoolId: 3,
+            profileId: 3,
+            approvedAt: 'd',
+            school: { networkId: 2 },
+          },
+        ],
+      });
+      mockJwtService.signAsync.mockResolvedValue('novo');
+
+      await expect(service.refresh(4)).resolves.toEqual({
+        access_token: 'novo',
+      });
+
+      const [payload, options] = mockJwtService.signAsync.mock.calls[0];
+      expect(payload.sub.subjectId).toBe(7);
+      expect(payload.sub.password).toBeUndefined();
+      expect(payload.sub.upsUser[0]).toEqual({
+        schoolId: 3,
+        profileId: 3,
+        approvedAt: 'd',
+        networkId: 2,
+      });
+      expect(options.expiresIn).toBeDefined();
+    });
+
+    it('recusa quando a conta não existe mais', async () => {
+      mockUsersService.findOneForToken.mockResolvedValue(undefined);
+
+      await expect(service.refresh(4)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('usa 12h quando JWT_EXPIRES_IN não vem na configuração', async () => {
+      mockUsersService.findOneForToken.mockResolvedValue({
+        id: 4,
+        password: 'h',
+        upsUser: [],
+      });
+      mockConfigService.get.mockImplementation((key: string) =>
+        key === 'jwtExpiresIn' ? undefined : 'secret',
+      );
+
+      await service.refresh(4);
+
+      expect(mockJwtService.signAsync.mock.calls[0][1].expiresIn).toBe('12h');
+      mockConfigService.get.mockImplementation((key: string) =>
+        key === 'saltRounds' ? 10 : 'secret',
+      );
+    });
+  });
+
+  describe('changePassword', () => {
+    it('updates the stored hash when the current password matches', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'old_hash',
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
+
+      const result = await service.changePassword(
+        1,
+        'current-pass',
+        'new-pass-123',
+      );
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('new-pass-123', 10);
+      expect(mockUsersService.updatePassword).toHaveBeenCalledWith(
+        1,
+        'new_hash',
+      );
+      expect(result).toEqual({ message: 'Senha alterada com sucesso' });
+    });
+
+    it('accepts the legacy scheme as the current password', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'legacy_hash',
+      });
+      (bcrypt.compare as jest.Mock)
+        .mockResolvedValueOnce(false) // esquema novo
+        .mockResolvedValueOnce(true); // esquema legado
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new_hash');
+
+      await service.changePassword(1, 'current-pass', 'new-pass-123');
+
+      expect(mockUsersService.updatePassword).toHaveBeenCalledWith(
+        1,
+        'new_hash',
+      );
+    });
+
+    it('rejects when the current password is wrong', async () => {
+      mockUsersService.findOne.mockResolvedValue({
+        id: 1,
+        password: 'old_hash',
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.changePassword(1, 'wrong-pass', 'new-pass-123'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { AuthGuard } from './auth.guard';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -8,6 +10,8 @@ describe('AuthController', () => {
 
   const mockAuthService = {
     signIn: jest.fn(),
+    changePassword: jest.fn(),
+    refresh: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -19,7 +23,12 @@ describe('AuthController', () => {
           useValue: mockAuthService,
         },
       ],
-    }).compile();
+    })
+      // change-password é protegida por AuthGuard (JwtService/ConfigService
+      // não fazem parte do teste unitário do controller).
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<AuthController>(AuthController);
     service = module.get<AuthService>(AuthService);
@@ -38,6 +47,57 @@ describe('AuthController', () => {
 
       expect(service.signIn).toHaveBeenCalledWith(dto.email, dto.password);
       expect(result).toEqual({ access_token: 'token' });
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should call authService.changePassword with the requester id', async () => {
+      const dto = { currentPassword: 'old-pass', newPassword: 'new-pass-123' };
+      mockAuthService.changePassword.mockResolvedValue({
+        message: 'Senha alterada com sucesso',
+      });
+
+      const result = await controller.changePassword(dto, {
+        user: { id: 7 },
+      });
+
+      expect(service.changePassword).toHaveBeenCalledWith(
+        7,
+        'old-pass',
+        'new-pass-123',
+      );
+      expect(result).toEqual({ message: 'Senha alterada com sucesso' });
+    });
+  });
+
+  describe('refresh', () => {
+    it('renova o token de quem está logado', async () => {
+      mockAuthService.refresh.mockResolvedValue({ access_token: 't' });
+
+      await expect(controller.refresh({ user: { id: 9 } })).resolves.toEqual({
+        access_token: 't',
+      });
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(9);
+    });
+  });
+
+  describe('govbrAuthUrl', () => {
+    it('should return the not implemented placeholder', () => {
+      expect(controller.govbrAuthUrl()).toEqual({
+        data: null,
+        message: 'Integracao Gov.br em desenvolvimento',
+        statusCode: HttpStatus.NOT_IMPLEMENTED,
+      });
+    });
+  });
+
+  describe('loginGovBr', () => {
+    it('should return the under development placeholder', () => {
+      expect(controller.loginGovBr()).toEqual({
+        data: null,
+        message: 'Recurso em desenvolvimento',
+        statusCode: HttpStatus.UNAUTHORIZED,
+      });
     });
   });
 });

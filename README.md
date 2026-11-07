@@ -28,15 +28,16 @@ Backend do sistema **Troca Aula** - plataforma para gerenciamento e facilitaçã
 
 ### Funcionalidades
 
-- **Autenticação**: JWT com bcrypt
+- **Autenticação**: JWT com bcrypt (inclui `networkId` por vínculo e fluxo de senha)
 - **CRUD**: Users, Schools, Subjects, Classes, Profiles
-- **Troca de Aulas**: Sistema de solicitações de troca entre professores
+- **Multi-tenant**: Networks, WorkloadPolicies, TeacherWorkloadRecords, MonthlyClosingReports e AuditLog
+- **Aulas Vagas**: fluxo "aula vaga → candidatura → aprovação da direção" (`enrollment-requests`)
 - **Inscrição**: Professores podem se increver/desinscrever de aulas
 
 ### Tecnologias
 
 - NestJS + TypeScript
-- Prisma ORM
+- Drizzle ORM
 - PostgreSQL
 - Docker
 
@@ -84,23 +85,47 @@ $ pnpm run start:prod
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
 | POST | /auth/login | Login com email e senha |
+| PATCH | /auth/change-password | Troca a senha do próprio usuário autenticado (`currentPassword`, `newPassword` com mínimo de 8 caracteres) |
 
-### Swap Requests (Troca de Aulas)
+O token JWT inclui os vínculos escola/perfil do usuário e, em cada vínculo, o
+`networkId` da rede da escola — o frontend não precisa de uma segunda chamada
+para resolver a rede ativa. O login também aceita e migra de forma lazy contas
+no esquema de hash legado (SHA1+bcrypt), re-hasheando no primeiro login bem-sucedido.
+
+### Users (Usuários)
+
+Requer autenticação JWT.
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /users/:id/reset-password | Gera senha temporária para o usuário (`tempPassword` devolvida uma única vez na resposta). MASTER em qualquer conta; DIRETOR/AUXILIAR_ADMIN apenas de usuário que compartilhe uma escola gerenciada por ele |
+
+### Enrollment Requests (Candidatura a Aulas Vagas)
+
+> **Nota de correção (2026-09):** esta seção descrevia um módulo `SwapRequest`
+> ("troca direta entre professores") que **não existe mais** — foi
+> implementado num ciclo anterior e removido do banco pela migration
+> `remove_swap_requests`. O fluxo real, desde então, é "aula vaga →
+> candidatura → aprovação da direção", abaixo.
 
 Requer autenticação JWT (`Authorization: Bearer <token>`)
 
 | Método | Endpoint | Descrição | Autorização |
 |--------|----------|-----------|--------------|
-| POST | /swap-requests | Criar solicitação de troca | Apenas DIRETOR ou AUXILIAR_ADMIN |
-| GET | /swap-requests | Listar solicitações | Autenticado |
-| GET | /swap-requests/:id | Detalhar solicitação | Autenticado |
-| PATCH | /swap-requests/:id/accept | Aceitar solicitação | Apenas professor da mesma matéria |
-| PATCH | /swap-requests/:id/reject | Rejeitar solicitação | Apenas professor da mesma matéria |
-| PATCH | /swap-requests/:id/cancel | Cancelar solicitação | Apenas criador (se PENDING) |
+| POST | /enrollment-requests/request/:classId | Professor se candidata a uma aula vaga | PROFESSOR, sujeito à disciplina e à janela de prioridade da escola (ver Design Doc) |
+| GET | /enrollment-requests | Listar candidaturas (filtros: `status`, `classId`, `professorId`, `userId`, `schoolId`, `createdAfter`, `createdBefore`, `mes`) | Gestor vê da própria escola; professor vê as próprias |
+| GET | /enrollment-requests/substitution-limit/:professorId | Status do limite de substituições do semestre atual (`current`, `limit`, `percentage`, `canApply`), calculado no servidor | O próprio professor, ou DIRETOR/AUXILIAR_ADMIN/MASTER |
+| GET | /enrollment-requests/:id | Detalhar candidatura | Gestor da escola ou o próprio professor |
+| PATCH | /enrollment-requests/:id/approve | Aprovar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |
+| PATCH | /enrollment-requests/:id/reject | Rejeitar candidatura | DIRETOR, AUXILIAR_ADMIN ou MASTER da escola |
+| DELETE | /enrollment-requests/:id | Cancelar candidatura | Apenas o próprio professor (se PENDING) |
 
-**Query Params (GET /swap-requests)**:
-- `status`: PENDING, APPROVED, REJECTED, CANCELLED
-- `type`: "created" (criadas por mim) | "received" (recebidas para mim)
+> **Nota (2026-09):** os endpoints multi-tenant (`Networks`, `WorkloadPolicies`,
+> `TeacherWorkloadRecords`, `MonthlyClosingReports`, `AuditLog`,
+> `GET /classes/coverage-stats` e `PATCH /schools/:id/priority-window`) estão
+> documentados nas seções abaixo. Para o racional de arquitetura (ADR-004/005/006,
+> RLS deliberadamente não ativado) ver `docs/design-doc-evolucao-multi-tenant.md`
+> na raiz do projeto.
 
 ### Classes (Aulas)
 
@@ -108,19 +133,111 @@ Requer autenticação JWT (`Authorization: Bearer <token>`)
 |--------|----------|-----------|
 | POST | /classes/:id/enroll | Inscrever-se na aula |
 | DELETE | /classes/:id/enroll | Cancelar inscrição |
+| GET | /classes/coverage-stats | Indicador histórico de cobertura de aulas vagas (filtros opcionais `schoolId`, `subjectId`, `dayOfWeek`); exige vínculo aprovado quando `schoolId` é informado |
 
 ### Schools (Escolas)
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
 | GET | /schools | Listar escolas |
-| POST | /schools | Criar escola |
+| POST | /schools | Criar escola (MASTER) |
+| PATCH | /schools/:id/priority-window | Definir a janela de prioridade da escola (`priorityWindowHours`); MASTER ou gestor da própria escola |
+
+### Networks (Redes)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /networks | Listar redes |
+| GET | /networks/:id | Detalhar rede |
+| POST | /networks | Criar rede (MASTER) |
+| PATCH | /networks/:id | Atualizar rede (MASTER) |
+
+Não há `DELETE`: apagar uma rede (e suas escolas, restringidas por FK) ainda não tem regra de negócio definida.
+
+### Workload Policies (Políticas de Carga Horária)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /workload-policies | Listar políticas (filtro opcional `networkId`) |
+| GET | /workload-policies/:id | Detalhar política |
+| POST | /workload-policies | Criar política (MASTER) |
+| PATCH | /workload-policies/:id | Atualizar política (MASTER) |
+
+### Teacher Workload Records (Jornada Docente)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /teacher-workload-records/me | Próprios registros de jornada (qualquer usuário autenticado) |
+| GET | /teacher-workload-records?schoolId= | Listar registros da escola (gestão, com vínculo aprovado na escola) |
+| GET | /teacher-workload-records/:id | Detalhar registro |
+| POST | /teacher-workload-records | Criar registro (gestão, com vínculo aprovado na escola); valida o teto de `WorkloadPolicies.maxHoursPerWeek` da rede |
+| PATCH | /teacher-workload-records/:id | Atualizar registro (gestão da escola) |
+| DELETE | /teacher-workload-records/:id | Remover registro (gestão da escola) |
+
+Criação, edição e remoção são registradas em `AuditLog`.
+
+### Monthly Closing Reports (Fechamento Mensal)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | /monthly-closing-reports/generate | Gera (ou regera em `DRAFT`) o relatório do mês (`userId`, `schoolId`, `referenceMonth` em `YYYY-MM`) — gestão, com vínculo aprovado na escola |
+| GET | /monthly-closing-reports | Listar relatórios (filtros `userId`, `schoolId`, `referenceMonth`) — gestão |
+| GET | /monthly-closing-reports/:id | Detalhar relatório (dono do relatório ou gestão da escola) |
+| PATCH | /monthly-closing-reports/:id/review | `DRAFT` → `REVIEWED` (gestão) |
+| PATCH | /monthly-closing-reports/:id/close | `REVIEWED` → `CLOSED` (gestão; não permite pular de `DRAFT`) |
+| PATCH | /monthly-closing-reports/:id/reopen | `REVIEWED`/`CLOSED` → `DRAFT` com justificativa obrigatória (gestão; registrado no `AuditLog`) |
+
+### Audit Log (Auditoria)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | /audit-log/network/:networkId | Consultar trilha de auditoria da rede (MASTER) |
+| GET | /audit-log/:entityType/:entityId | Consultar trilha de auditoria de uma entidade (MASTER) |
+
+### Elegibilidade e Preferências (Fase 5 — Design Doc, Seção 9)
+
+> Motor de visibilidade de vagas por **grupos de professores por escola**: cada escola cria grupos (nome + tempo de espera), classifica professores e define a espera de quem não está em nenhum grupo; o município define para quais municípios exibe suas vagas e a escola pode restringir **mais** que ele ("o mais restritivo vence"); exclusão do próprio professor vence qualquer critério. Escolas sem grupos usam o fallback `Schools.priorityWindowHours`. Aplicado na listagem e na candidatura.
+
+| Método | Endpoint | Descrição | Autorização |
+|--------|----------|-----------|-------------|
+| GET | /schools/:id/teacher-groups | Grupos da escola (com professores), delay padrão e redes permitidas | Gestão da escola ou MASTER |
+| POST | /schools/:id/teacher-groups | Cria grupo (nome + delay em minutos) | Gestão da escola ou MASTER |
+| PATCH | /schools/:id/teacher-groups/:groupId | Edita nome/delay do grupo | Gestão da escola ou MASTER |
+| DELETE | /schools/:id/teacher-groups/:groupId | Remove o grupo | Gestão da escola ou MASTER |
+| PUT | /schools/:id/teacher-groups/:groupId/members | Substitui os professores do grupo | Gestão da escola ou MASTER |
+| PATCH | /schools/:id/priority-settings | Delay de quem não está em grupo + redes aceitas (subconjunto das interconectadas) | Gestão da escola ou MASTER |
+| GET | /networks/:id/interconnections | Redes que esta rede aceita (direcional) | MASTER |
+| PUT | /networks/:id/interconnections | Substitui as interconexões | MASTER |
+| GET | /professor-preferences | Interesses de rede e exclusões de escola do próprio usuário | Autenticado |
+| POST | /professor-preferences/network-interests | Adiciona interesse por rede | Autenticado |
+| DELETE | /professor-preferences/network-interests/:networkId | Remove interesse | Autenticado |
+| POST | /professor-preferences/school-exclusions | Exclui uma escola das vagas novas | Autenticado |
+| DELETE | /professor-preferences/school-exclusions/:schoolId | Remove a exclusão | Autenticado |
+
+**Notificações por e-mail (opcional):** `EmailService` (nodemailer) envia e-mail em aprovação/rejeição de candidatura e em nova vaga (professores da matéria vinculados à escola). Sem `SMTP_HOST` no ambiente, vira no-op e nada quebra (ver `.env.example`).
+
+### RLS (Row-Level Security)
+
+> Ativado na rodada de segurança (ADR-006 revisado): todo request autenticado roda com uma **conexão reservada** e as GUCs de sessão `app.current_network_ids` (redes dos vínculos aprovados) e `app.is_master`; as políticas da migration `0007` são **fail-closed** (sem GUC, nenhuma linha). Isso exige um papel de banco **NOSUPERUSER** para a aplicação (RLS é ignorado por superusuário) e o papel dono para migrations:
+
+```bash
+# 1) cria/atualiza o papel de aplicação (idempotente)
+docker exec -i postgres_container psql -U <admin> -d troca_aula \
+  -v app_password='SUA_SENHA' -f - < scripts/setup-rls-role.sql
+
+# 2) .env: app conecta como o papel novo; migrations como o dono
+DATABASE_URL="postgresql://troca_aula_app:SUA_SENHA@localhost:5432/troca_aula?schema=public"
+MIGRATION_DATABASE_URL="postgresql://<dono>:<senha>@localhost:5432/troca_aula?schema=public"
+```
 
 ### Regras de Negócio
 
-1. **Criar SwapRequest**: Apenas usuário com perfil DIRETOR ou AUXILIAR_ADMIN
-2. **Aceitar Swap**: Apenas professor da mesma matéria da aula
-3. **Conflito de horário**: Mesmo dia + horário sobreposto = conflito
+1. **Criar aula vaga**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola
+2. **Candidatar-se**: apenas professor da mesma matéria da aula, e só se a janela de prioridade da escola já permitir (ver Design Doc)
+3. **Conflito de horário**: mesmo dia + horário sobreposto = conflito
+4. **Aprovar/rejeitar**: DIRETOR, AUXILIAR_ADMIN ou MASTER da escola da aula
+5. **Jornada docente**: a soma das horas vigentes por tipo não pode ultrapassar `WorkloadPolicies.maxHoursPerWeek` da rede; toda criação/edição/remoção é auditada
+6. **Fechamento mensal**: `review` e `close` seguem `DRAFT → REVIEWED → CLOSED`; `reopen` exige justificativa e volta o relatório para `DRAFT`
 
 ## Run tests
 
@@ -131,7 +248,7 @@ $ pnpm run test
 # e2e tests
 $ pnpm run test:e2e
 
-# test coverage
+# test coverage (minimo global de 90%: falha abaixo disso)
 $ pnpm run test:cov
 ```
 

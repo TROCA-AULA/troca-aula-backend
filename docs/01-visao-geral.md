@@ -16,17 +16,17 @@ O sistema **Troca Aula** tem como objetivo principal facilitar e gerenciar o pro
 
 ## Objetivos do Sistema
 
-1. **Automatizar solicitacoes**: Professores/diretores podem solicitar trocas de forma digital
+1. **Automatizar solicitacoes**: Gestores cadastram aulas vagas e professores se candidatam de forma digital
 2. **Verificar conflitos**: Sistema verifica automaticamente conflitos de horario
-3. **Controlar permissoes**: Apenas pessoas autorizadas podem criar/aceitar trocas
-4. **Rastrear historico**: Todas as trocas sao registradas para consulta futura
+3. **Controlar permissoes**: Apenas pessoas autorizadas podem criar aulas vagas e aprovar candidaturas
+4. **Rastrear historico**: Todas as candidaturas e substituicoes sao registradas para consulta futura
 
 ## Escopo do Projeto
 
 ### Escopo Principal (MVP)
 - Autenticacao de usuarios
 - Gerenciamento de escolas, disciplinas e turmas
-- Sistema de solicitacao de trocas de aulas
+- Sistema de candidatura a aulas vagas (fluxo `enrollment-requests`: aula vaga → candidatura → aprovacao da direcao)
 - Sistema de inscricao em aulas
 
 ### Escopo Futuro (roadmap)
@@ -41,8 +41,8 @@ Este e um projeto academico desenvolvido em **TypeScript** com **NestJS**, utili
 
 ## Publico Alvo
 
-- **Diretores**: Podem criar solicitacoes de troca
-- **Professores**: Podem aceitar/rejeitar trocas e se increver em aulas
+- **Diretores**: Aprovam candidaturas a aulas vagas e gerenciam as regras da escola
+- **Professores**: Podem se candidatar a aulas vagas, cancelar a propria candidatura e se increver em aulas
 - **Administradores**: Gestao geral do sistema
 
 ---
@@ -89,7 +89,7 @@ C4Container
     Container_Boundary(backend, "Backend") {
         Container(nestjs, "NestJS API", "API RESTful", "Processa lógica de negócio")
         Container(jwt, "JWT Auth", "Autenticação", "Valida tokens de acesso")
-        Container(prisma, "Prisma ORM", "Persistência", "Comunica com banco de dados")
+        Container(orm, "Drizzle ORM", "Persistência", "Comunica com banco de dados")
     }
     
     Container_Boundary(externo, "Sistemas Externos") {
@@ -99,8 +99,8 @@ C4Container
     
     Rel(react, nestjs, "Requisições HTTP", "JSON")
     Rel(nestjs, jwt, "Valida Token", "")
-    Rel(nestjs, prisma, "Queries", "")
-    Rel(prisma, postgres, "JDBC", "")
+    Rel(nestjs, orm, "Queries", "")
+    Rel(orm, postgres, "SQL", "")
     Rel(nestjs, govbr, "Valida Identity", "OAuth2")
 ```
 
@@ -213,13 +213,13 @@ graph TB
     subgraph "Camada de Aplicação NestJS"
         API[API RESTful]
         AUTH[Modulo Auth<br/>JWT]
-        SWAP[Modulo Swap<br/>Trocas]
+        ENROLL[Modulo Enrollment Requests<br/>Candidaturas]
         CLASS[Modulo Class<br/>Aulas]
         USER[Modulo User<br/>Usuarios]
     end
     
     subgraph "Camada de Dados"
-        ORM[Prisma ORM]
+        ORM[Drizzle ORM]
         DB[(PostgreSQL)]
     end
     
@@ -231,11 +231,11 @@ graph TB
     FE_Mobile --> NGINX
     NGINX --> API
     API --> AUTH
-    API --> SWAP
+    API --> ENROLL
     API --> CLASS
     API --> USER
     AUTH --> ORM
-    SWAP --> ORM
+    ENROLL --> ORM
     CLASS --> ORM
     USER --> ORM
     ORM --> DB
@@ -292,14 +292,14 @@ sequenceDiagram
     FE-->>P: Apresenta oportunidades
     
     P->>FE: Clica em "Candidatar-se"
-    FE->>API: POST /enrollments
+    FE->>API: POST /enrollment-requests/request/:classId
     
     alt Verificacoes Ok
         API->>DB: Valida habilitacao
         API->>DB: Verifica conflito de horario
         API->>DB: Confere limite de substituicoes
         DB-->>API: Todas verificacoes OK
-        API->>DB: Cria registro de candidatura
+        API->>DB: Cria registro de candidatura (PENDING)
         DB-->>API: Confirma registro
         API->>D: Notifica nova candidatura
         API-->>FE: Retorna sucesso
@@ -320,14 +320,14 @@ sequenceDiagram
     participant DB as Banco de Dados
     
     D->>FE: Acessa painel de aprovacoes
-    FE->>API: GET /enrollments?status=PENDING
+    FE->>API: GET /enrollment-requests?status=PENDING
     API->>DB: Consulta candidaturas pendentes
     DB-->>API: Retorna lista
     API-->>FE: Exibe painel
     FE-->>D: Lista de pendientes
     
     D->>FE: Seleciona candidatura para analisar
-    FE->>API: GET /enrollments/:id
+    FE->>API: GET /enrollment-requests/:id
     API->>DB: Busca detalhes completos
     DB-->>API: Retorna dados do candidato
     API-->>FE: Exibe detalhes
@@ -335,15 +335,15 @@ sequenceDiagram
     
     alt Aprovar
         D->>FE: Clica em "Aprovar"
-        FE->>API: PUT /enrollments/:id/approve
+        FE->>API: PATCH /enrollment-requests/:id/approve
         API->>DB: Atualiza status para APPROVED
-        API->>DB: Decrementa limite do professor
+        API->>DB: Ocupa a aula (enrolledById)
         DB-->>API: Confirma operacao
         API-->>FE: Retorna sucesso
         FE-->>D: Exibe confirmacao
     else Rejeitar
         D->>FE: Clica em "Rejeitar" + motivo
-        FE->>API: PUT /enrollments/:id/reject
+        FE->>API: PATCH /enrollment-requests/:id/reject
         API->>DB: Atualiza status para REJECTED
         DB-->>API: Confirma operacao
         API-->>FE: Retorna sucesso
@@ -359,7 +359,7 @@ sequenceDiagram
 |------------|------------|
 | Linguagem | TypeScript |
 | Framework | NestJS |
-| ORM | Prisma |
+| ORM | Drizzle |
 | Banco de Dados | PostgreSQL |
 | Autenticacao | JWT + bcrypt |
 | Containerizacao | Docker |

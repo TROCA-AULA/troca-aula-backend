@@ -68,23 +68,23 @@ cd troca-aula-backend
 ```mermaid
 flowchart LR
     A[pnpm install] --> B[node_modules]
-    B --> C[Prisma Generate]
-    C --> D[Prisma Migrate]
-    D --> E[Prisma Studio]
+    B --> C[Drizzle Generate]
+    C --> D[Drizzle Migrate]
+    D --> E[Drizzle Studio]
 ```
 
 ```bash
 # Instala todas as dependências do projeto
 pnpm install
 
-# Gera o cliente Prisma
-npx prisma generate
+# Gera as migrations a partir do schema (src/database/schema.ts)
+pnpm db:generate
 
-# Executa as migrações do banco de dados
-npx prisma migrate dev
+# Aplica as migrations pendentes (drizzle/migrations)
+pnpm db:migrate
 
 # (Opcional) Abre uma interface visual do banco
-npx prisma studio
+pnpm db:studio
 ```
 
 ### 3. Configurar Variáveis de Ambiente
@@ -92,16 +92,40 @@ npx prisma studio
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-# Banco de dados
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?schema=public"
+# Banco de dados — a app conecta como papel NOSUPERUSER (o RLS é ignorado
+# por superusuário; ver "RLS" no README e scripts/setup-rls-role.sql)
+DATABASE_URL="postgresql://troca_aula_app:senha@localhost:5432/troca_aula?schema=public"
+
+# Papel dono/superusuário, usado SÓ por `pnpm db:migrate` (DDL).
+# Sem esta variável, o migrate cai de volta para DATABASE_URL.
+MIGRATION_DATABASE_URL="postgresql://usuario:senha@localhost:5432/troca_aula?schema=public"
 
 # Autenticação JWT
-JWT_SECRET="sua_chave_secreta_aqui_mude_em_producao"
-JWT_EXPIRATION="24h"
+# Nome real lido pelo código (src/config/configuration.ts): SECRET, não JWT_SECRET.
+# Se omitido, cai no fallback inseguro hardcoded do código — sempre defina em qualquer ambiente.
+SECRET="sua_chave_secreta_aqui_mude_em_producao"
+SALT=10
+# Validade do login (12h, 30m, 7d...). Padrão: 12h. O front renova com POST /auth/refresh.
+# JWT_EXPIRES_IN=12h
 
 # Servidor
-PORT=3000
+PORT=5000
 NODE_ENV=development
+
+# Notificações por e-mail (opcional) — sem SMTP_HOST o EmailService vira no-op
+# SMTP_HOST=smtp.exemplo.com
+# SMTP_PORT=587
+# SMTP_SECURE=false
+# SMTP_USER=usuario
+# SMTP_PASS=senha
+# SMTP_FROM="Troca Aula <no-reply@exemplo.com>"
+```
+
+Antes da primeira subida, crie o papel de aplicação (idempotente):
+
+```bash
+docker exec -i postgres_container psql -U <admin> -d troca_aula \
+  -v app_password='senha' -f - < scripts/setup-rls-role.sql
 ```
 
 ### 4. Executar o Servidor
@@ -117,7 +141,7 @@ pnpm run start:prod
 pnpm run start:debug
 ```
 
-O servidor estará disponível em: `http://localhost:3000`
+O servidor estará disponível em: `http://localhost:5000` (valor de `PORT` no `.env`; sem `PORT`, o padrão do código é 3000).
 
 ---
 
@@ -157,6 +181,9 @@ pnpm run test
 pnpm run test:watch
 
 # Executar testes com cobertura de código
+# (aplica o mínimo global de 90% em statements/branches/functions/lines
+#  configurado no package.json; entrypoints/declarativo — main.ts,
+#  database/migrate.ts e database/schema.ts — ficam fora da conta)
 pnpm run test:cov
 
 # Executar testes e2e
@@ -166,36 +193,38 @@ pnpm run test:e2e
 ### Exemplo de Teste Unitário
 
 ```typescript
-// Exemplo de teste de serviço
-describe('SwapRequestsService', () => {
-  let service: SwapRequestsService;
-  let repository: jest.Mocked<SwapRequestsRepository>;
+// Exemplo de teste de serviço (spec real em
+// src/modules/enrollment-requests/enrollment-requests.service.spec.ts)
+describe('EnrollmentRequestsService', () => {
+  let service: EnrollmentRequestsService;
+  let repository: EnrollmentRequestsRepository;
 
   beforeEach(async () => {
-    const module = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SwapRequestsService,
-        {
-          provide: SwapRequestsRepository,
-          useValue: mockRepository,
-        },
+        EnrollmentRequestsService,
+        { provide: EnrollmentRequestsRepository, useValue: mockRepository },
+        { provide: UsersRepository, useValue: mockUserRepository },
+        { provide: ClassesRepository, useValue: mockClassesRepository },
+        { provide: DrizzleService, useValue: { db: mockDb } },
+        TenantContextService,
       ],
     }).compile();
 
-    service = module.get<SwapRequestsService>(SwapRequestsService);
-    repository = module.get(SwapRequestsRepository);
+    service = module.get<EnrollmentRequestsService>(EnrollmentRequestsService);
+    repository = module.get<EnrollmentRequestsRepository>(
+      EnrollmentRequestsRepository,
+    );
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  it('should create a swap request', async () => {
-    const createDto = { classId: 1, targetId: 2 };
-    repository.create.mockResolvedValue({ id: 1, ...createDto });
-
-    const result = await service.create(createDto);
-    expect(result).toHaveProperty('id');
+  it('should create an enrollment request', async () => {
+    // Cenário: aula vaga da mesma matéria, sem conflito e dentro do limite.
+    // O spec real mocka ClassesRepository.findOne, UsersRepository.findOne e
+    // o DrizzleService (conflito/limite) antes de chamar service.create(1, 2).
   });
 });
 ```
@@ -247,7 +276,7 @@ flowchart TB
 docker build -t troca-aula-backend:latest .
 
 # Executar container
-docker run -p 3000:3000 --env-file .env troca-aula-backend:latest
+docker run -p 5000:5000 --env-file .env troca-aula-backend:latest
 ```
 
 ### Docker Compose
@@ -260,7 +289,7 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "5000:5000"
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/troca_aula
     depends_on:
@@ -288,10 +317,9 @@ volumes:
 ```env
 # .env.production
 DATABASE_URL="postgresql://user:pass@host:5432/troca_aula_prod"
-JWT_SECRET="chave_muito_segura_aleatoria"
-JWT_EXPIRATION="24h"
+SECRET="chave_muito_segura_aleatoria"
 NODE_ENV=production
-PORT=3000
+PORT=5000
 ```
 
 ### Health Check
@@ -303,13 +331,10 @@ sequenceDiagram
     
     K8s->>App: GET /health
     App-->>K8s: { "status": "ok", "uptime": 1234 }
-    K8s->>App: GET /ready
-    App-->>K8s: { "status": "ready" }
 ```
 
-O sistema expõe os endpoints:
+O sistema expõe o endpoint:
 - `/health` - Verifica se a aplicação está rodando
-- `/ready` - Verifica se a aplicação está pronta para receber tráfego
 
 ---
 
@@ -319,26 +344,35 @@ O sistema expõe os endpoints:
 troca-aula-backend/
 ├── src/
 │   ├── config/           # Configurações
+│   ├── database/         # Schema Drizzle, conexão, soft delete e runner de migrations
+│   │   ├── schema.ts           # Schema do banco (fonte de verdade)
+│   │   ├── drizzle.service.ts  # Conexão (Drizzle + postgres.js)
+│   │   ├── migrate.ts          # Script do `pnpm db:migrate`
+│   │   └── soft-delete.ts
 │   ├── modules/          # Módulos da aplicação
-│   │   ├── auth/         # Autenticação
+│   │   ├── auth/         # Autenticação, guards e contexto de tenant
 │   │   ├── users/        # Gerenciamento de usuários
 │   │   ├── schools/      # Gerenciamento de escolas
 │   │   ├── subjects/     # Gerenciamento de disciplinas
 │   │   ├── classes/      # Gerenciamento de aulas
-│   │   ├── profile/      # Perfis de usuário
-│   │   └── enrollment-requests/ # Candidaturas
-│   ├── prisma.service.ts # Conexão com banco
-│   ├── app.module.ts    # Módulo principal
-│   └── main.ts          # Entry point
-├── prisma/
-│   ├── schema.prisma    # Schema do banco
-│   └── migrations/      # Migrações
-├── test/                # Testes e2e
-├── docs/                # Documentação
-├── docker-compose.yml   # Docker Compose
-├── Dockerfile           # Dockerfile
-├── package.json        # Dependências
-└── tsconfig.json       # Configuração TypeScript
+│   │   ├── enrollment-requests/      # Candidaturas a aulas vagas
+│   │   ├── networks/                 # Redes de ensino
+│   │   ├── workload-policies/        # Políticas de carga horária
+│   │   ├── teacher-workload-records/ # Jornada docente
+│   │   ├── monthly-closing-reports/  # Fechamento mensal
+│   │   └── audit-log/                # Auditoria
+│   ├── app.module.ts     # Módulo principal
+│   └── main.ts           # Entry point
+├── drizzle/
+│   └── migrations/       # Migrações geradas pelo drizzle-kit
+├── prisma/               # Referência histórica do Prisma (não é mais a fonte de verdade)
+├── test/                 # Testes e2e
+├── docs/                 # Documentação
+├── docker-compose.yml    # Docker Compose
+├── Dockerfile            # Dockerfile
+├── drizzle.config.ts     # Configuração do drizzle-kit
+├── package.json          # Dependências
+└── tsconfig.json         # Configuração TypeScript
 ```
 
 ---
@@ -350,7 +384,7 @@ troca-aula-backend/
 | Problema | Solução |
 |----------|---------|
 | Erro ao conectar no banco | Verificar se o PostgreSQL está rodando e a URL está correta |
-| Erro de autenticação JWT | Verificar se a variável JWT_SECRET está configurada |
+| Erro de autenticação JWT | Verificar se a variável SECRET está configurada |
 | Testes falhando | Verificar se o banco de dados de teste está configurado |
 | Porta em uso | Mudar a porta no arquivo .env ou matar o processo |
 
@@ -361,13 +395,17 @@ troca-aula-backend/
 docker logs -f container_id
 
 # Verificar processos usando a porta
-lsof -i :3000
+lsof -i :5000
 
 # Limpar node_modules e reinstalar
 rm -rf node_modules && pnpm install
 
+# Aplicar as migrations pendentes do Drizzle
+pnpm db:migrate
+
 # Resetar banco de dados
-npx prisma migrate reset
+# Não há script de reset no package.json: recrie o banco no PostgreSQL e
+# rode `pnpm db:migrate` para reaplicar as migrations de drizzle/migrations.
 ```
 
 ---
@@ -417,7 +455,9 @@ pnpm run commit
 |---------|-----------|
 | `src/main.ts` | Ponto de entrada da aplicação |
 | `src/app.module.ts` | Módulo principal que organiza todos os sub-módulos |
-| `src/prisma.service.ts` | Serviço de conexão com banco de dados |
+| `src/database/drizzle.service.ts` | Serviço de conexão com banco de dados (Drizzle + postgres.js) |
+| `src/database/schema.ts` | Schema do banco (tabelas, colunas, índices e relations) |
+| `src/database/migrate.ts` | Script que aplica as migrations (`pnpm db:migrate`) |
 | `src/config/configuration.ts` | Configurações globais |
 | `src/modules/auth/auth.service.ts` | Lógica de autenticação JWT |
 | `src/modules/enrollment-requests/enrollment-requests.service.ts` | Service de candidaturas |
@@ -435,10 +475,15 @@ graph TB
         M5[classes]
         M6[profile]
         M7[enrollment-requests]
+        M8[networks]
+        M9[workload-policies]
+        M10[teacher-workload-records]
+        M11[monthly-closing-reports]
+        M12[audit-log]
     end
     
     subgraph "Infraestrutura"
-        I1[Prisma]
+        I1[Drizzle + postgres.js]
         I2[Config]
         I3[Main]
     end
@@ -450,6 +495,11 @@ graph TB
     M5 --> I1
     M6 --> I1
     M7 --> I1
+    M8 --> I1
+    M9 --> I1
+    M10 --> I1
+    M11 --> I1
+    M12 --> I1
     
     I1 --> I2
     I2 --> I3
@@ -461,6 +511,11 @@ graph TB
     style M5 fill:#E91E63,color:#fff
     style M6 fill:#00BCD4,color:#fff
     style M7 fill:#795548,color:#fff
+    style M8 fill:#3F51B5,color:#fff
+    style M9 fill:#009688,color:#fff
+    style M10 fill:#FF5722,color:#fff
+    style M11 fill:#607D8B,color:#fff
+    style M12 fill:#8BC34A,color:#fff
 ```
 
 ---
@@ -473,7 +528,7 @@ graph TB
 |-------|-----------|
 | NestJS | Framework progressivo para construir aplicações Node.js |
 | TypeScript | Linguagem que adiciona tipagem estática ao JavaScript |
-| Prisma | ORM que facilita a comunicação com banco de dados |
+| Drizzle ORM | ORM TypeScript que facilita a comunicação com o banco de dados (migrations via drizzle-kit) |
 | PostgreSQL | Sistema de banco de dados relacional open source |
 | JWT | JSON Web Token - padrão para autenticação stateless |
 | bcrypt | Biblioteca para hashing de senhas |
@@ -524,3 +579,4 @@ mindmap
       Fluxo do Banco
     Annexos
       base.MD
+```

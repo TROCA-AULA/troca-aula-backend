@@ -1,35 +1,50 @@
 import { Injectable } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { PrismaService } from '../../prisma.service';
-import { Prisma } from '@prisma/client';
+import { DrizzleService } from '../../database/drizzle.service';
+import { profiles } from '../../database/schema';
 
+// Profiles não está na lista de soft-delete (nunca teve deletedAt no schema
+// Prisma) — remove() aqui é um DELETE real, igual ao comportamento anterior.
 @Injectable()
 export class ProfileRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly drizzle: DrizzleService) {}
+
   async create(createProfileDto: CreateProfileDto) {
-    const profile = await this.prisma.profiles.create({
-      data: { ...createProfileDto } as Prisma.ProfilesCreateInput,
-    });
+    const [profile] = await this.drizzle.db
+      .insert(profiles)
+      .values({ ...createProfileDto })
+      .returning();
     return profile;
   }
 
   findAll() {
-    return this.prisma.profiles.findMany();
+    return this.drizzle.db.select().from(profiles);
   }
 
-  findOne(id: number) {
-    return this.prisma.profiles.findUnique({ where: { id } });
+  async findOne(id: number) {
+    const [profile] = await this.drizzle.db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, id));
+    return profile ?? null;
   }
 
-  update(id: number, updateProfileDto: UpdateProfileDto) {
-    return this.prisma.profiles.update({
-      data: updateProfileDto as Prisma.ProfilesUpdateInput,
-      where: { id },
-    });
+  async update(id: number, updateProfileDto: UpdateProfileDto) {
+    const [profile] = await this.drizzle.db
+      .update(profiles)
+      .set({ ...updateProfileDto })
+      .where(eq(profiles.id, id))
+      .returning();
+    return profile;
   }
 
-  remove(id: number) {
-    return this.prisma.profiles.delete({ where: { id } });
+  async remove(id: number) {
+    const [profile] = await this.drizzle.db
+      .delete(profiles)
+      .where(eq(profiles.id, id))
+      .returning();
+    return profile;
   }
 }

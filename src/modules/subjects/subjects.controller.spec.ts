@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SubjectsController } from './subjects.controller';
 import { SubjectsService } from './subjects.service';
+import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 describe('SubjectsController', () => {
   let controller: SubjectsController;
@@ -14,6 +16,14 @@ describe('SubjectsController', () => {
     remove: jest.fn(),
   };
 
+  // Este é um teste unitário de controller (chama os métodos diretamente,
+  // sem passar pelo pipeline HTTP do Nest); o comportamento dos guards em
+  // si é coberto por auth.guard.spec.ts e roles.guard.spec.ts. Aqui só
+  // sobrescrevemos para que o Nest não tente resolver as dependências
+  // reais dos guards (JwtService/ConfigService/TenantContextService) neste
+  // módulo de teste isolado.
+  const mockGuard = { canActivate: jest.fn().mockReturnValue(true) };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SubjectsController],
@@ -23,7 +33,12 @@ describe('SubjectsController', () => {
           useValue: mockSubjectsService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue(mockGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockGuard)
+      .compile();
 
     controller = module.get<SubjectsController>(SubjectsController);
     service = module.get<SubjectsService>(SubjectsService);

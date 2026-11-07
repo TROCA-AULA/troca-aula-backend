@@ -24,6 +24,7 @@ describe('configuration', () => {
     expect(conf.database.port).toBe(5432);
     expect(conf.saltRounds).toBe(10);
     expect(conf.secret).toBe('s0//P4$$w0rD');
+    expect(conf.jwtExpiresIn).toBe('12h');
   });
 
   it('should return configuration from environment variables', () => {

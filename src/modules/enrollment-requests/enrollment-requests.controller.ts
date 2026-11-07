@@ -9,10 +9,16 @@ import {
   UseGuards,
   Request,
   ParseIntPipe,
+  Body,
 } from '@nestjs/common';
 import { EnrollmentRequestsService } from './enrollment-requests.service';
 import { FilterEnrollmentRequestDto } from './dto/filter-enrollment-request.dto';
+import { RejectEnrollmentRequestDto } from './dto/reject-enrollment-request.dto';
 import { AuthGuard } from '../auth/auth.guard';
+
+interface AuthenticatedRequest {
+  user: { id: number };
+}
 
 @Controller('enrollment-requests')
 @UseGuards(AuthGuard)
@@ -22,13 +28,33 @@ export class EnrollmentRequestsController {
   ) {}
 
   @Post('request/:classId')
-  request(@Param('classId', ParseIntPipe) classId: number, @Request() req) {
+  request(
+    @Param('classId', ParseIntPipe) classId: number,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.enrollmentRequestsService.create(classId, req.user.id);
   }
 
   @Get()
-  findAll(@Query() query: FilterEnrollmentRequestDto, @Request() req) {
+  findAll(
+    @Query() query: FilterEnrollmentRequestDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.enrollmentRequestsService.findAll(query, req.user.id);
+  }
+
+  // Status já calculado no servidor (limite, contagem do semestre atual,
+  // pode candidatar-se) — fonte única de verdade, substitui o cálculo de
+  // semestre que o frontend fazia com o relógio do navegador (P14).
+  @Get('substitution-limit/:professorId')
+  getSubstitutionLimitStatus(
+    @Param('professorId', ParseIntPipe) professorId: number,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.enrollmentRequestsService.getSubstitutionLimitStatus(
+      professorId,
+      req.user.id,
+    );
   }
 
   @Get(':id')
@@ -37,17 +63,31 @@ export class EnrollmentRequestsController {
   }
 
   @Patch(':id/approve')
-  approve(@Param('id', ParseIntPipe) id: number, @Request() req) {
+  approve(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.enrollmentRequestsService.approve(id, req.user.id);
   }
 
   @Patch(':id/reject')
-  reject(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.enrollmentRequestsService.reject(id, req.user.id);
+  reject(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: AuthenticatedRequest,
+    @Body() dto?: RejectEnrollmentRequestDto,
+  ) {
+    return this.enrollmentRequestsService.reject(
+      id,
+      req.user.id,
+      dto?.rejectionReason,
+    );
   }
 
   @Delete(':id')
-  cancel(@Param('id', ParseIntPipe) id: number, @Request() req) {
+  cancel(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.enrollmentRequestsService.cancel(id, req.user.id);
   }
 }
